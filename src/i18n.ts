@@ -118,7 +118,9 @@ const zh: Record<string, string> = {
 
   // ---------- 触发说明 ----------
   triggerNote:
-    "触发说明：新建 / 网页剪藏（同属「新建自动打标」）；保存 / 更新（同属「内容变更自动打标」）；手动命令始终可用。默认自动触发，正文满 {min} 字自动更新，不足 {min} 字仅可手动触发。",
+    "触发说明：新建 / 网页剪藏（属「新建自动打标」）；保存 / 更新（属「内容变更自动打标」）；手动命令始终可用。自动触发默认开启：当某个字段缺失或被删除时，会**实时补全**（不受字数限制）；仅当所有字段都已存在、正文不足 {min} 字时，才暂缓调用、待你写入达标后自动触发。",
+  realtimeNote:
+    "⚡ 实时性：空字段 / 被删除字段一旦触发即**立即补全**，不被字数门槛阻挡；其余字段按上方「已有标签处理策略」处理。停止编辑约 {debounce} 毫秒后发起 AI 调用。",
 
   // ---------- 生效范围 ----------
   scopeCardTitle: "📁 生效范围",
@@ -146,7 +148,7 @@ const zh: Record<string, string> = {
   debounceDesc: "停止输入/写入后等待多久再调用 AI。",
   tagPolicyName: "🛡️ 已有标签处理策略",
   tagPolicyDesc:
-    "保护（默认）：笔记已有标签则整篇跳过，绝不改动你喜欢的标签；合并：保留已有值，AI 仅补充新标签/字段；覆盖：AI 全权重写所有目标字段。",
+    "已有「非空」字段的写入策略（空字段 / 被删除的字段**始终实时补全**，不受此策略影响）：🛡️ 保护=保留现有非空值，绝不改动你喜欢的标签；🔀 合并=保留已有值，AI 仅补充新值（默认）；♻️ 覆盖=AI 全权覆盖所有目标字段。",
   tagPolicySkip: "保护已有（有标签则跳过）",
   tagPolicyMerge: "合并（保留原有 + AI 补充）",
   tagPolicyOverwrite: "覆盖（AI 全权）",
@@ -154,7 +156,7 @@ const zh: Record<string, string> = {
   maxContentDesc: "截断正文以控制 token 消耗与费用。",
   minContentName: "📏 触发打标的最小正文字数",
   minContentDesc:
-    "正文不足该字数视为「内容不足」：新建空文件先挂起，待你写入达标后自动触发；不对此类文件发起 AI 调用，避免浪费。",
+    "正文不足该字数且**所有字段都已存在**时视为「内容不足」，暂缓调用、待你写入达标后自动触发；若某字段缺失 / 被删除，则不受此限制，立即实时补全。设为 0 表示总是立即调用。",
   concurrencyName: "🔀 批量并发数",
   concurrencyDesc: "批量处理时的最大并发请求数。",
 
@@ -302,7 +304,9 @@ const en: Record<string, string> = {
 
   // ---------- Trigger note ----------
   triggerNote:
-    "Triggers: new file / web clip (both are 'Auto-tag on create'); save / update (both are 'Auto-tag on change'); the manual command is always available. Auto is on by default; notes with at least {min} chars auto-update, shorter ones can only be tagged manually.",
+    "Triggers: new file / web clip (Auto-tag on create); save / update (Auto-tag on change); the manual command is always available. Auto is on by default: when a field is missing or was deleted, it is **filled in real time** (no char limit); only when every field already exists AND the body is under {min} chars do we defer the call until you write enough.",
+  realtimeNote:
+    "⚡ Real-time: empty / deleted fields are **filled immediately** when triggered, never blocked by the char threshold; other fields follow the 'Existing-tag policy' above. AI is called ~{debounce} ms after you stop editing.",
 
   // ---------- Scope ----------
   scopeCardTitle: "📁 Scope",
@@ -331,7 +335,7 @@ const en: Record<string, string> = {
   debounceDesc: "Wait this long after typing/writing stops before calling AI.",
   tagPolicyName: "🛡️ Existing-tag policy",
   tagPolicyDesc:
-    "Protect (default): if a note already has tags, skip it entirely — never change tags you like. Merge: keep existing, AI only adds. Overwrite: AI rewrites all target fields.",
+    "How non-empty existing fields are written (empty / deleted fields are **always filled in real time** and ignore this policy): 🛡️ Protect=keep existing non-empty values, never change tags you like; 🔀 Merge=keep existing, AI only adds (default); ♻️ Overwrite=AI rewrites all target fields.",
   tagPolicySkip: "Protect (skip if tagged)",
   tagPolicyMerge: "Merge (keep + AI adds)",
   tagPolicyOverwrite: "Overwrite (AI takes over)",
@@ -339,7 +343,7 @@ const en: Record<string, string> = {
   maxContentDesc: "Truncate the body to control token cost.",
   minContentName: "📏 Min chars to trigger",
   minContentDesc:
-    "Below this, content is 'insufficient': new empty files are deferred until you write enough; no AI call is made to avoid waste.",
+    "When the body is under this many chars AND **every field already exists**, it is 'insufficient' and deferred until you write enough; if any field is missing / deleted, it is filled in real time regardless. Set 0 to always call immediately.",
   concurrencyName: "🔀 Batch concurrency",
   concurrencyDesc: "Max concurrent requests during batch processing.",
 

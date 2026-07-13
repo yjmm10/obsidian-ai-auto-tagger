@@ -659,6 +659,14 @@
   line-height: 1.6;
 }
 
+/* 实时性提示：用更醒目的强调色，突出核心能力 */
+.ai-tagger-info-note.ai-tagger-realtime {
+  border-left-color: var(--text-accent);
+  background: color-mix(in srgb, var(--text-accent) 10%, var(--background-primary));
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
 /* ---------- 字段主开关（卡片头部） ---------- */
 .ai-tagger-master-toggle {
   display: inline-flex;

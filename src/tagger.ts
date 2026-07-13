@@ -2,6 +2,7 @@ import { App, Notice, TFile } from "obsidian";
 import { FieldMapping, PluginSettings, TagSource } from "./types";
 import { callAI } from "./ai-client";
 import { compileNote, splitFrontmatter } from "./frontmatter";
+import { applyFields } from "./field-apply";
 
 /**
  * 收集「预定义标签池」（按字段独立配置来源）：
@@ -102,23 +103,11 @@ export function isInScope(file: TFile, settings: PluginSettings): boolean {
   return false;
 }
 
-/** 按字段类型把 AI 返回值强转为目标类型。 */
-function coerce(value: unknown, type: FieldMapping["type"]): unknown {
-  switch (type) {
-    case "array":
-      return Array.isArray(value)
-        ? value.map((v) => String(v).trim()).filter(Boolean)
-        : value != null && value !== ""
-        ? [String(value).trim()]
-        : [];
-    case "number":
-      return Number(value);
-    case "boolean":
-      return Boolean(value);
-    case "string":
-    default:
-      return value == null ? "" : String(value);
-  }
+/** 泛化标题（如 Untitled / 未命名）：无正文时不应据此发起 AI 调用。 */
+function isGenericTitle(t: string): boolean {
+  return /^(untitled|new\s+(note|file)|未命名|新建\s*(笔记|文件)?|无标题)$/i.test(
+    t.trim()
+  );
 }
 
 /**
@@ -131,11 +120,11 @@ export async function tagFile(
   file: TFile,
   settings: PluginSettings,
   notice = true,
-  predefinedTags: Record<string, string[]> = {}
+  predefinedTags: Record<string, string[]> = {},
+  mode: "auto" | "manual" | "batch" = "manual"
 ): Promise<boolean> {
   if (!isInScope(file, settings)) {
-    if (notice)
-      new Notice(`AI Tagger: ${file.path} 不在生效范围内，已跳过`);
+    if (notice) new Notice(`AI Tagger: ${file.path} 不在生效范围内，已跳过`);
     return false;
   }
 
@@ -143,25 +132,19 @@ export async function tagFile(
   const { frontmatter, body } = splitFrontmatter(raw);
   const fm: Record<string, unknown> = frontmatter ?? {};
 
-  if (
-    settings.tagPolicy === "skip" &&
-    Array.isArray(fm.tags) &&
-    (fm.tags as unknown[]).length > 0
-  ) {
-    if (notice) new Notice(`AI Tagger: ${file.path} 已有标签，已跳过（保护模式）`);
-    return false;
-  }
-
   const content = body.slice(0, settings.maxContentChars);
-  if (content.trim().length === 0 && file.basename.trim().length === 0) {
-    if (notice) new Notice(`AI Tagger: ${file.path} 内容为空，已跳过`);
+  const title = file.basename.trim();
+  // 无可用信号（正文空且标题为空 / 泛化）时不发起 AI 调用，避免对空文件浪费
+  if (content.trim().length === 0 && (title.length === 0 || isGenericTitle(title))) {
+    if (notice && mode !== "auto")
+      new Notice(`AI Tagger: ${file.path} 缺乏可读内容，已跳过`);
     return false;
   }
 
   const res = await callAI(
     settings.ai,
     settings.fields,
-    file.basename,
+    title,
     content,
     undefined,
     predefinedTags
@@ -172,53 +155,24 @@ export async function tagFile(
     return false;
   }
 
-  const newFm: Record<string, unknown> = { ...fm };
-  let changed = false;
-  const overwrite = settings.tagPolicy === "overwrite";
-
-  for (const field of settings.fields) {
-    if (!field.enabled || !field.name.trim()) continue;
-    const key = field.name.trim();
-    if (!(key in res.data)) continue;
-    const coerced = coerce(res.data[key], field.type);
-
-    if (overwrite) {
-      // 覆盖模式：AI 全权，任何差异都写入
-      if (JSON.stringify(newFm[key]) !== JSON.stringify(coerced)) {
-        newFm[key] = coerced;
-        changed = true;
-      }
-    } else {
-      // 保护 / 合并模式：保留已有值，AI 仅补充
-      if (field.type === "array") {
-        const existing = Array.isArray(newFm[key])
-          ? (newFm[key] as unknown[])
-          : [];
-        const merged = Array.from(
-          new Set([...existing, ...(coerced as unknown[])].map(String))
-        );
-        if (merged.length !== existing.length) {
-          newFm[key] = merged;
-          changed = true;
-        }
-      } else if (
-        newFm[key] === undefined ||
-        newFm[key] === null ||
-        newFm[key] === ""
-      ) {
-        newFm[key] = coerced;
-        changed = true;
-      }
-    }
-  }
-
+  // 字段级策略：空字段 / 被删除字段始终实时补全，非空字段按 tagPolicy 处理
+  const { fm: newFm, changed } = applyFields(
+    fm,
+    res.data,
+    settings.fields,
+    settings.tagPolicy
+  );
   if (!changed) {
-    if (notice) new Notice(`AI Tagger: ${file.path} 无新增字段`);
+    if (notice && mode !== "auto")
+      new Notice(`AI Tagger: ${file.path} 无新增字段`);
     return false;
   }
 
   const out = compileNote(newFm, body);
   await app.vault.modify(file, out);
-  if (notice) new Notice(`AI Tagger: 已为 ${file.path} 写入字段`);
+  if (notice) {
+    const label = mode === "auto" ? "🏷️ 已自动更新" : "✅ 已写入";
+    new Notice(`AI Tagger: ${label} ${file.path}`);
+  }
   return true;
 }

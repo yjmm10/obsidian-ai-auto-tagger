@@ -937,10 +937,16 @@ export class AITaggerSettingTab extends PluginSettingTab {
         })
       );
 
-    // 触发说明提示框（剪藏/新建/保存/更新/手动 的对应关系 + 300 字门控）
+    // 触发说明提示框（剪藏/新建/保存/更新/手动 的对应关系 + 实时补全规则）
     card.createEl("p", {
       cls: "ai-tagger-info-note",
       text: this.tr("triggerNote", { min: s.minContentChars }),
+    });
+
+    // 实时性提示框（核心卖点）
+    card.createEl("p", {
+      cls: "ai-tagger-info-note ai-tagger-realtime",
+      text: this.tr("realtimeNote", { debounce: s.debounceMs }),
     });
 
     new Setting(card)

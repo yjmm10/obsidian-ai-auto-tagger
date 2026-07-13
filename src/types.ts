@@ -64,20 +64,20 @@ export interface PluginSettings {
   autoOnCreate: boolean;
   /** 已有文件内容新增后自动打标（默认关闭） */
   autoOnModify: boolean;
-  /** 自动触发防抖时间（毫秒） */
+  /** 自动触发防抖时间（毫秒）：停止编辑后多久发起 AI 打标，兼顾实时与省调用。 */
   debounceMs: number;
   /** 生效文件夹是否递归包含其下所有子文件夹（默认 true）。
    *  false=仅该文件夹内的直接文件生效，子文件夹中的文件不生效。 */
   recursiveScope: boolean;
-  /** 已有标签 / 字段的处理策略
-   *  - "skip"      : 笔记已有非空 tags 时整篇跳过（最保护，绝不改动你喜欢的标签）。默认。
-   *  - "merge"     : 保留已有值，AI 仅补充新值（数组去重追加，标量仅当原值为空时写入）。
+  /** 已有「非空」字段的处理策略（空字段 / 被删除的字段始终实时补全，不受此策略影响）：
+   *  - "skip"      : 保留现有非空值，绝不改动你喜欢的标签（最保护）。
+   *  - "merge"     : 保留已有值，AI 仅补充新值（数组去重追加，标量仅当原值为空时写入）。默认。
    *  - "overwrite" : AI 全权覆盖所有目标字段。 */
   tagPolicy: "skip" | "merge" | "overwrite";
   /** 送入 AI 的正文最大字符数 */
   maxContentChars: number;
-  /** 触发自动打标所需的最小正文长度（字符）。低于此值视为「内容不足」，
-   *  新建空文件会挂起，待后续写入达标后自动触发；避免对空文件浪费 AI 调用。 */
+  /** 触发自动打标所需的最小正文长度（字符）。仅当「所有字段都已存在且内容不足」时挂起，
+   *  等待后续写入达标；若某字段缺失 / 被删除，则不受此限制，立即实时补全。 */
   minContentChars: number;
   /** 批量处理并发数 */
   concurrency: number;
@@ -141,9 +141,9 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   excludedFolders: [],
   autoOnCreate: true,
   autoOnModify: true,
-  debounceMs: 3000,
+  debounceMs: 2000,
   recursiveScope: true,
-  tagPolicy: "skip",
+  tagPolicy: "merge",
   maxContentChars: 1000,
   minContentChars: 300,
   concurrency: 5,

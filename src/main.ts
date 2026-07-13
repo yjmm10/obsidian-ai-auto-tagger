@@ -2,14 +2,17 @@ import { App, Modal, Notice, Plugin, TFile } from "obsidian";
 import { DEFAULT_SETTINGS, PluginSettings } from "./types";
 import { AITaggerSettingTab } from "./settings";
 import { collectPredefinedTags, isInScope, tagFile } from "./tagger";
+import { isEmptyValue } from "./field-apply";
 import { splitFrontmatter } from "./frontmatter";
 import { isContentSufficient } from "./text";
 
 export default class AITaggerPlugin extends Plugin {
   settings: PluginSettings;
   private debounceTimers: Map<string, number> = new Map();
-  /** 程序写回期间忽略 modify 事件，避免自触发循环 */
-  private writingPaths: Set<string> = new Set();
+  /** 程序写回文件后一段时间内的 modify 事件忽略，避免自触发循环 */
+  private lastWritten: Map<string, number> = new Map();
+  /** 自写宽限期：在此窗口内的 modify 视为插件自身写回，忽略 */
+  private static GRACE_MS = 4000;
   /** 内容不足而挂起、等待后续写入达标的文件（新建空文件场景） */
   private pendingCreate: Set<string> = new Set();
   /** 预定义标签池缓存（按字段来源的 tagSource+tagFilePath 签名失效），键为字段名 */
@@ -56,24 +59,13 @@ export default class AITaggerPlugin extends Plugin {
       );
     }
 
-    if (this.settings.autoOnModify) {
-      this.registerEvent(
-        this.app.vault.on("modify", (file) => {
-          if (this.writingPaths.has(file.path)) return;
-          if (file instanceof TFile && file.extension === "md") {
-            this.scheduleAuto(file);
-          }
-        })
-      );
-    }
-
-    // 待定文件监听：新建空文件内容不足时挂起，此处在内容写够后自动触发。
-    // 该监听始终注册，与 autoOnModify 开关无关，保证「先建空文件、后补内容」也能自动打标。
+    // 统一监听 modify：自动触发 + 挂起文件达标后触发；自写宽限内忽略，防循环。
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
-        if (this.writingPaths.has(file.path)) return;
         if (!(file instanceof TFile) || file.extension !== "md") return;
-        if (this.pendingCreate.has(file.path)) {
+        const last = this.lastWritten.get(file.path) ?? 0;
+        if (Date.now() - last < AITaggerPlugin.GRACE_MS) return;
+        if (this.pendingCreate.has(file.path) || this.settings.autoOnModify) {
           this.scheduleAuto(file);
         }
       })
@@ -179,11 +171,11 @@ export default class AITaggerPlugin extends Plugin {
   }
 
   /**
-   * 执行单次打标，带「内容达标」门控。
+   * 执行单次打标，带「内容达标 / 空字段实时补全」门控。
    * @param mode
-   *  - "auto"：自动触发。内容不足 → 挂起等待后续写入（不调用 AI）。
-   *  - "manual"：手动命令。内容不足 → 提示并跳过。
-   *  - "batch"：批量。内容不足 → 静默跳过。
+   *  - "auto"：自动触发。内容不足且无空字段 → 挂起等待后续写入（不调用 AI）。
+   *  - "manual"：手动命令。内容不足且无空字段 → 提示并跳过。
+   *  - "batch"：批量。内容不足且无空字段 → 静默跳过。
    */
   private async runTag(
     file: TFile,
@@ -197,12 +189,18 @@ export default class AITaggerPlugin extends Plugin {
     }
 
     const raw = await this.app.vault.read(file);
-    if (!isContentSufficient(raw, this.settings.minContentChars)) {
+    const { frontmatter } = splitFrontmatter(raw);
+    const fm = (frontmatter ?? {}) as Record<string, unknown>;
+    // 是否存在「缺失或为空」的已启用字段（需要实时补全，不受字数门槛阻挡）
+    const needsFill = this.anyEnabledFieldEmpty(fm);
+    const sufficient = isContentSufficient(raw, this.settings.minContentChars);
+
+    if (!sufficient && !needsFill) {
       if (mode === "auto") {
-        // 内容不足：挂起，等后续 modify 写够再触发（不浪费 AI 调用）
+        // 内容不足且无空字段：挂起，等后续 modify 写够再触发（不浪费 AI 调用）
         this.pendingCreate.add(file.path);
       } else if (mode === "manual") {
-        const len = (splitFrontmatter(raw).body.trim().length);
+        const len = splitFrontmatter(raw).body.trim().length;
         new Notice(
           `AI Tagger: 内容过少（${len} 字），未达 ${this.settings.minContentChars} 字阈值，已跳过`
         );
@@ -212,14 +210,29 @@ export default class AITaggerPlugin extends Plugin {
     }
 
     this.pendingCreate.delete(file.path);
-    this.writingPaths.add(file.path);
     try {
       const pool =
         predefinedTags ?? (await this.getPredefinedTags());
-      return await tagFile(this.app, file, this.settings, mode !== "auto", pool);
+      return await tagFile(
+        this.app,
+        file,
+        this.settings,
+        mode !== "auto",
+        pool,
+        mode
+      );
     } finally {
-      this.writingPaths.delete(file.path);
+      // 记录写回时间，宽限窗口内忽略自身触发的 modify，避免循环
+      this.lastWritten.set(file.path, Date.now());
     }
+  }
+
+  /** 是否存在已启用、但 frontmatter 中缺失或为空的目标字段（需实时补全）。 */
+  private anyEnabledFieldEmpty(fm: Record<string, unknown>): boolean {
+    return this.settings.fields.some((f) => {
+      if (!f.enabled || !f.name.trim()) return false;
+      return isEmptyValue(fm[f.name.trim()], f.type);
+    });
   }
 
   private batchByFolder(): void {
@@ -255,7 +268,6 @@ export default class AITaggerPlugin extends Plugin {
     let fail = 0;
     const pool = await this.getPredefinedTags();
     await this.runPool(files, async (file) => {
-      this.writingPaths.add(file.path);
       try {
         const r = await this.runTag(file, "batch", pool);
         if (r) ok++;
@@ -263,8 +275,6 @@ export default class AITaggerPlugin extends Plugin {
       } catch (e) {
         fail++;
         console.error("AI Tagger 批量处理失败:", file.path, e);
-      } finally {
-        this.writingPaths.delete(file.path);
       }
     });
     new Notice(

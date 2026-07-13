@@ -23,6 +23,7 @@ import {
 } from "../src/ai-client";
 import type { AISettings, FieldMapping } from "../src/types";
 import { isContentSufficient } from "../src/text";
+import { applyFields, isEmptyValue } from "../src/field-apply";
 
 let passed = 0;
 let failed = 0;
@@ -353,6 +354,50 @@ const JSON_CONTENT = JSON.stringify({
       !(twoOut.mood as string[]).includes("愤怒") &&
       !(twoOut.mood as string[]).includes("读书")
   );
+
+  // ---------- 12. 实时补全：空字段 / 被删除字段始终写入（applyFields） ----------
+  console.log("\n[12] 实时补全（applyFields 字段级策略）");
+  const rtFields: FieldMapping[] = [
+    { enabled: true, name: "tags", type: "array", description: "", constraints: "", mode: "generate" },
+    { enabled: true, name: "summary", type: "string", description: "", constraints: "", mode: "generate" },
+  ];
+
+  // 空字段在 skip 下也实时补全（核心实时性：没有标签 / 删掉标签都要更新）
+  const skipEmpty = applyFields({}, { tags: ["技术", "读书"], summary: "摘要" }, rtFields, "skip");
+  check("skip 策略：缺失字段被实时补全(tags)", Array.isArray(skipEmpty.fm.tags) && (skipEmpty.fm.tags as string[]).length === 2);
+  check("skip 策略：缺失字段被实时补全(summary)", skipEmpty.fm.summary === "摘要");
+  check("skip 策略：有写入变更", skipEmpty.changed === true);
+
+  // 被删除的字段（空数组）在 skip 下也实时补全
+  const skipDeleted = applyFields({ tags: [] }, { tags: ["技术"] }, rtFields, "skip");
+  check("skip 策略：被删除(空数组)的 tags 实时补全", Array.isArray(skipDeleted.fm.tags) && (skipDeleted.fm.tags as string[]).includes("技术"));
+
+  // 非空字段在 skip 下保留（保护用户已喜欢的标签）
+  const skipKeep = applyFields({ tags: ["旧标签"] }, { tags: ["新标签"] }, rtFields, "skip");
+  check("skip 策略：非空 tags 被保留(不覆盖)", Array.isArray(skipKeep.fm.tags) && (skipKeep.fm.tags as string[]).includes("旧标签") && !(skipKeep.fm.tags as string[]).includes("新标签"));
+  check("skip 策略：无变更则不写", skipKeep.changed === false);
+
+  // merge：非空数组去重追加
+  const mergeAdd = applyFields({ tags: ["旧标签"] }, { tags: ["新标签"] }, rtFields, "merge");
+  check("merge 策略：保留旧 + 追加新", Array.isArray(mergeAdd.fm.tags) && (mergeAdd.fm.tags as string[]).length === 2 && (mergeAdd.fm.tags as string[]).includes("新标签"));
+
+  // overwrite：全权覆盖
+  const ow = applyFields({ tags: ["旧标签"] }, { tags: ["新标签"] }, rtFields, "overwrite");
+  check("overwrite 策略：覆盖为 AI 值", Array.isArray(ow.fm.tags) && (ow.fm.tags as string[]).includes("新标签") && !(ow.fm.tags as string[]).includes("旧标签"));
+
+  // AI 返回空数组时不写入（避免 tags: []）
+  const emptyArr = applyFields({}, { tags: [] }, rtFields, "merge");
+  check("AI 返回空数组不写入(不产生 tags: [])", !("tags" in emptyArr.fm) && emptyArr.changed === false);
+
+  // 禁用字段不参与
+  const disabled = applyFields({}, { tags: ["技术"] }, [{ ...rtFields[0], enabled: false }], "skip");
+  check("禁用字段不参与实时补全", !("tags" in disabled.fm) && disabled.changed === false);
+
+  // isEmptyValue 边界
+  check("isEmptyValue: undefined 为空", isEmptyValue(undefined, "array") === true);
+  check("isEmptyValue: 空数组为空(string 类型看处理)", isEmptyValue([], "array") === true);
+  check("isEmptyValue: false 布尔非空", isEmptyValue(false, "boolean") === false);
+  check("isEmptyValue: 空字符串为空", isEmptyValue("  ", "string") === true);
 
   console.log(`\n结果：通过 ${passed}，失败 ${failed}`);
   if (failed > 0) process.exit(1);

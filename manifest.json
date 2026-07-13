@@ -1,0 +1,10 @@
+{
+  "id": "ai-auto-tagger",
+  "name": "AI Auto Tagger",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "用兼容 OpenAI 协议的 AI 接口为笔记自动生成标签与自定义字段；支持多文件夹范围、创建/剪藏/手动触发。",
+  "author": "WorkBuddy",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

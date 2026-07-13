@@ -1,0 +1,28 @@
+.ai-tagger-notice {
+  font-size: var(--font-ui-small);
+}
+
+.ai-tagger-field-row {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--background-secondary);
+}
+
+.ai-tagger-field-row .setting-item {
+  border-top: none;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.ai-tagger-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ai-tagger-list-item input {
+  flex: 1;
+}

@@ -1,0 +1,35 @@
+{
+  "name": "ai-auto-tagger",
+  "version": "1.0.0",
+  "description": "用兼容 OpenAI 协议的 AI 接口为 Obsidian 笔记自动生成标签与自定义字段",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
+  },
+  "keywords": [
+    "obsidian",
+    "ai",
+    "tagger",
+    "frontmatter",
+    "vercel-ai",
+    "multi-vendor"
+  ],
+  "author": "WorkBuddy",
+  "license": "MIT",
+  "devDependencies": {
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.23.0",
+    "obsidian": "^1.7.2",
+    "tslib": "^2.6.3",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/google": "^1.0.0",
+    "@ai-sdk/openai-compatible": "^1.0.0",
+    "ai": "^5.0.210",
+    "zod": "^3.23.8"
+  }
+}

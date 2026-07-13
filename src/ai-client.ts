@@ -109,6 +109,16 @@ function resolveFieldPolicy(
   return { allowed: manual.length ? manual : undefined, strict: false, union: undefined };
 }
 
+/** 内置默认 system prompt（不含动态字段定义，字段定义会由 buildRequestParams 自动追加）。 */
+const DEFAULT_SYSTEM_PROMPT =
+  "你是一名严谨的中文笔记元数据提取助手。\n" +
+  "请根据用户提供的笔记（标题 + 正文），提取下方定义的字段，并只输出一个 JSON 对象。\n\n" +
+  "严格要求：\n" +
+  "1. JSON 顶层键名必须与字段定义中的名称完全一致，不得增删、改写或翻译。\n" +
+  "2. 每个字段的值必须严格符合其声明类型（string=字符串；array=字符串数组；number=数字；boolean=true/false）。\n" +
+  "3. 若字段标注了「允许取值」，则只能从该范围内挑选，不得自创新值。\n" +
+  "4. 不要输出任何解释、Markdown 代码块标记或多余文字，直接输出 JSON。";
+
 /** 把 AI 返回的数组值按 allowed 规范过滤；命中时映射回规范写法。
  *  strict=false 且全部越界时保留原值（避免误清空）。 */
 function filterAllowed(
@@ -178,16 +188,8 @@ export function buildRequestParams(
       return `- ${f.name}（类型：${f.type}）${cPart}：${f.description}${modeHint}`;
     })
     .join("\n");
-  const system =
-    `${settings.extraInstruction ? settings.extraInstruction + "\n" : ""}` +
-    `你是一名严谨的中文笔记元数据提取助手。\n` +
-    `请根据用户提供的笔记（标题 + 正文），提取下方定义的字段，并只输出一个 JSON 对象。\n\n` +
-    `严格要求：\n` +
-    `1. JSON 顶层键名必须与下方「字段定义」中的名称完全一致，不得增删、改写或翻译。\n` +
-    `2. 每个字段的值必须严格符合其声明类型（string=字符串；array=字符串数组；number=数字；boolean=true/false）。\n` +
-    `3. 若字段标注了「允许取值」，则只能从该范围内挑选，不得自创新值。\n` +
-    `4. 不要输出任何解释、Markdown 代码块标记或多余文字，直接输出 JSON。\n\n` +
-    `字段定义：\n${fieldSpec}`;
+  const systemPrompt = (settings.systemPrompt || DEFAULT_SYSTEM_PROMPT).trim();
+  const system = `${systemPrompt}\n\n字段定义：\n${fieldSpec}`;
   const prompt = `标题：${title}\n\n内容：\n${content}`;
   return { system, prompt, schema: buildSchema(enabled) };
 }

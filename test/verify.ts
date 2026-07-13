@@ -69,7 +69,7 @@ const baseOpenAI: AISettings = {
   topP: 1,
   maxTokens: 800,
   requestTimeout: 30000,
-  extraInstruction: "",
+  systemPrompt: "",
 };
 check("openai 缺 key → 报错", validateSettings(baseOpenAI).some((e) => /Key/.test(e)));
 check(
@@ -206,7 +206,7 @@ const JSON_CONTENT = JSON.stringify({
     topP: 1,
     maxTokens: 800,
     requestTimeout: 30000,
-    extraInstruction: "",
+    systemPrompt: "",
   };
   const tagFields: FieldMapping[] = [
     { enabled: true, name: "tags", type: "array", description: "标签", mode: "generate" },
@@ -239,6 +239,12 @@ const JSON_CONTENT = JSON.stringify({
   ];
   const rpC = buildRequestParams(cfg, constrainedFields, "t", "c");
   check("buildRequestParams 注入允许取值", rpC.system.includes("技术, 读书, 生活"));
+
+  // systemPrompt 为空时回退到默认系统提示词；自定义 systemPrompt 优先
+  check("systemPrompt 为空时回退默认提示词", rp.system.includes("JSON 顶层键名"));
+  const customCfg = { ...cfg, systemPrompt: "你是自定义助手。" };
+  const rpCustom = buildRequestParams(customCfg, tagFields, "标题X", "内容Y");
+  check("自定义 systemPrompt 生效", rpCustom.system.startsWith("你是自定义助手。"));
 
   // ---------- 7. 字段「允许取值」约束（coerceFields 过滤）----------
   console.log("\n[7] 字段允许取值约束");

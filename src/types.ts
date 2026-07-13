@@ -13,8 +13,10 @@ export interface AISettings {
   maxTokens: number;
   /** 单次请求超时（毫秒） */
   requestTimeout: number;
-  /** 追加在字段说明之前的自定义 system 提示前缀 */
-  extraInstruction: string;
+  /** 系统提示词（system prompt）。留空时使用插件内置的优化提示词。 */
+  systemPrompt: string;
+  /** @deprecated 旧版自定义 system 提示前缀，已合并进 systemPrompt。保留以兼容旧数据。 */
+  extraInstruction?: string;
 }
 
 export type FieldType = "string" | "array" | "number" | "boolean";
@@ -93,8 +95,14 @@ export const DEFAULT_SETTINGS: PluginSettings = {
     topP: 1,
     maxTokens: 100,
     requestTimeout: 30000,
-    extraInstruction:
-      "你是一名严谨的中文笔记元数据标注助手，输出必须严格符合给定字段的类型与取值要求。",
+    systemPrompt:
+      "你是一名严谨的中文笔记元数据提取助手。\n" +
+      "请根据用户提供的笔记（标题 + 正文），提取下方定义的字段，并只输出一个 JSON 对象。\n\n" +
+      "严格要求：\n" +
+      "1. JSON 顶层键名必须与字段定义中的名称完全一致，不得增删、改写或翻译。\n" +
+      "2. 每个字段的值必须严格符合其声明类型（string=字符串；array=字符串数组；number=数字；boolean=true/false）。\n" +
+      "3. 若字段标注了「允许取值」，则只能从该范围内挑选，不得自创新值。\n" +
+      "4. 不要输出任何解释、Markdown 代码块标记或多余文字，直接输出 JSON。",
   },
   fields: [
     {

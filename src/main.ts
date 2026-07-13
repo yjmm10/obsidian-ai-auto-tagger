@@ -98,6 +98,14 @@ export default class AITaggerPlugin extends Plugin {
     const data = (await this.loadData()) as Partial<PluginSettings> | null;
     const base = structuredClone(DEFAULT_SETTINGS);
     this.settings = deepMerge(base, data ?? {});
+
+    // 兼容旧配置：将 extraInstruction 迁移到新的 systemPrompt
+    if (
+      !this.settings.ai.systemPrompt &&
+      (data as any)?.ai?.extraInstruction
+    ) {
+      this.settings.ai.systemPrompt = (data as any).ai.extraInstruction;
+    }
   }
 
   async saveSettings(): Promise<void> {

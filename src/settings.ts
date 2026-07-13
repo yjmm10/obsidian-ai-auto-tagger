@@ -9,8 +9,9 @@ import {
 } from "./models";
 import { verifyConnection } from "./ai-client";
 import { t, Locale } from "./i18n";
+import { QR_CODE_BASE64 } from "./assets";
 
-type TabId = "tag" | "ai";
+type TabId = "tag" | "ai" | "about";
 
 export class AITaggerSettingTab extends PluginSettingTab {
   plugin: AITaggerPlugin;
@@ -50,6 +51,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
     const tabs: { id: TabId; labelKey: string; descKey: string }[] = [
       { id: "tag", labelKey: "tabTagLabel", descKey: "tabTagDesc" },
       { id: "ai", labelKey: "tabAiLabel", descKey: "tabAiDesc" },
+      { id: "about", labelKey: "tabAboutLabel", descKey: "tabAboutDesc" },
     ];
 
     const navEl = headerEl.createDiv({ cls: "ai-tagger-tab-nav" });
@@ -75,6 +77,8 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     if (this.activeTab === "ai") {
       this.buildAISection(content);
+    } else if (this.activeTab === "about") {
+      this.buildAboutSection(content);
     } else {
       this.buildFieldSection(content);
       this.buildScopeSection(content);
@@ -108,12 +112,18 @@ export class AITaggerSettingTab extends PluginSettingTab {
   private card(
     parent: HTMLElement,
     titleKey: string,
-    subKey?: string
+    subKey?: string,
+    actions?: (container: HTMLElement) => void
   ): HTMLElement {
     const card = parent.createDiv({ cls: "ai-tagger-card" });
     const head = card.createDiv({ cls: "ai-tagger-card-head" });
-    head.createEl("div", { cls: "ai-tagger-card-title", text: this.tr(titleKey) });
-    if (subKey) head.createEl("div", { cls: "ai-tagger-card-sub", text: this.tr(subKey) });
+    const text = head.createDiv({ cls: "ai-tagger-card-head-text" });
+    text.createEl("div", { cls: "ai-tagger-card-title", text: this.tr(titleKey) });
+    if (subKey) text.createEl("div", { cls: "ai-tagger-card-sub", text: this.tr(subKey) });
+    if (actions) {
+      const actionsEl = head.createDiv({ cls: "ai-tagger-card-actions" });
+      actions(actionsEl);
+    }
     return card;
   }
 
@@ -276,6 +286,11 @@ export class AITaggerSettingTab extends PluginSettingTab {
           })
       );
 
+    card.createEl("p", {
+      cls: "setting-item-description ai-tagger-info-note",
+      text: this.tr("maxTokensNote"),
+    });
+
     new Setting(card)
       .setName(this.tr("timeoutName"))
       .setDesc(this.tr("timeoutDesc"))
@@ -311,14 +326,27 @@ export class AITaggerSettingTab extends PluginSettingTab {
       .setName(this.tr("sysPromptName"))
       .setDesc(this.tr("sysPromptDesc"))
       .addTextArea((t2) =>
-        t2.setValue(ai.extraInstruction).onChange(async (v) => {
-          ai.extraInstruction = v;
+        t2.setValue(ai.systemPrompt).onChange(async (v) => {
+          ai.systemPrompt = v;
           await this.plugin.saveSettings();
         })
       )
       .then((st) => {
-        (st.components[0] as any).inputEl.rows = 3;
+        (st.components[0] as any).inputEl.rows = 4;
       });
+
+    // 重置系统提示词
+    const sysResetRow = card.createDiv({ cls: "ai-tagger-row-end" });
+    const resetSysBtn = sysResetRow.createEl("button", {
+      text: this.tr("sysPromptReset"),
+      cls: "ai-tagger-ghost-btn",
+    });
+    resetSysBtn.addEventListener("click", async () => {
+      ai.systemPrompt = DEFAULT_SETTINGS.ai.systemPrompt;
+      await this.plugin.saveSettings();
+      this.display();
+      new Notice(this.tr("sysPromptResetNotice"));
+    });
 
     // 测试连接：整行 CTA
     const testBar = card.createDiv({ cls: "ai-tagger-testbar" });
@@ -351,9 +379,29 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
   // ============ 提取字段 ============
   private buildFieldSection(containerEl: HTMLElement): void {
-    const card = this.card(containerEl, "fieldCardTitle", "fieldCardSub");
+    const card = this.card(
+      containerEl,
+      "fieldCardTitle",
+      "fieldCardSub",
+      (actions) => {
+        const master = actions.createEl("label", {
+          cls: "ai-tagger-master-toggle",
+        });
+        const masterCheck = master.createEl("input", { type: "checkbox" });
+        masterCheck.checked = this.plugin.settings.fields.some(
+          (f) => f.enabled
+        );
+        master.appendText(" " + this.tr("fieldMasterName"));
+        masterCheck.addEventListener("change", async () => {
+          const target = masterCheck.checked;
+          this.plugin.settings.fields.forEach((f) => (f.enabled = target));
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      }
+    );
 
-    const listEl = card.createDiv();
+    const listEl = card.createDiv({ cls: "ai-tagger-field-list" });
     this.renderFieldList(listEl);
 
     const addBtn = card.createEl("button", {
@@ -377,60 +425,112 @@ export class AITaggerSettingTab extends PluginSettingTab {
   private renderFieldList(listEl: HTMLElement): void {
     listEl.empty();
     const fields = this.plugin.settings.fields;
+
+    const modeLabel = (mode: FieldMapping["mode"]) => {
+      const key =
+        mode === "generate"
+          ? "fModeGenerate"
+          : mode === "predefined"
+          ? "fModePredefined"
+          : "fModeHybrid";
+      return this.tr(key);
+    };
+
+    if (fields.length === 0) {
+      listEl.createEl("p", {
+        cls: "setting-item-description",
+        text: this.tr("noFields"),
+      });
+      return;
+    }
+
     fields.forEach((field, idx) => {
       const collapsed = this.collapsedFields.has(field);
-      const card = listEl.createDiv({ cls: "ai-tagger-field-card" });
+      const card = listEl.createDiv({
+        cls:
+          "ai-tagger-field-card" + (field.enabled ? "" : " is-disabled"),
+      });
 
-      // 卡片头：折叠箭头 + 字段名 + 类型 + 删除
+      // 卡片头：折叠箭头 + 字段元信息 + 启用开关 + 删除
       const head = card.createDiv({ cls: "ai-tagger-field-head" });
       const toggle = head.createEl("button", {
         cls: "ai-tagger-field-toggle",
         text: collapsed ? "▸" : "▾",
         title: this.tr(collapsed ? "expand" : "collapse"),
       });
-      head.createEl("span", {
+      const meta = head.createDiv({ cls: "ai-tagger-field-meta" });
+      meta.createEl("span", {
         cls: "ai-tagger-field-name",
         text: field.name ? field.name : this.tr("unnamed"),
       });
-      head.createEl("span", { cls: "ai-tagger-field-type", text: field.type });
-      const del = head.createEl("button", {
-        text: this.tr("fDelete"),
-        cls: "ai-tagger-field-del",
+      meta.createEl("span", {
+        cls: "ai-tagger-field-type",
+        text: field.type,
       });
-      del.addEventListener("click", async () => {
-        fields.splice(idx, 1);
-        this.collapsedFields.delete(field);
-        await this.plugin.saveSettings();
-        this.renderFieldList(listEl);
+      if (field.mode !== "generate") {
+        meta.createEl("span", {
+          cls: "ai-tagger-field-mode",
+          text: modeLabel(field.mode),
+        });
+      }
+
+      const enableWrap = head.createEl("label", {
+        cls: "ai-tagger-field-enable",
+        title: this.tr("fEnabledDesc"),
+      });
+      const enableCheck = enableWrap.createEl("input", { type: "checkbox" });
+      enableCheck.checked = field.enabled;
+
+      const del = head.createEl("button", {
+        text: "🗑",
+        cls: "ai-tagger-field-del",
+        title: this.tr("fDelete"),
       });
 
       // 控件网格（折叠时隐藏）
       const grid = card.createDiv({ cls: "ai-tagger-field-grid" });
       if (collapsed) grid.style.display = "none";
 
-      toggle.addEventListener("click", () => {
-        if (this.collapsedFields.has(field)) {
-          this.collapsedFields.delete(field);
-          grid.style.display = "";
-          toggle.textContent = "▾";
-          toggle.title = this.tr("collapse");
-        } else {
+      const setCollapsed = (val: boolean) => {
+        if (val) {
           this.collapsedFields.add(field);
           grid.style.display = "none";
           toggle.textContent = "▸";
           toggle.title = this.tr("expand");
+        } else {
+          this.collapsedFields.delete(field);
+          grid.style.display = "";
+          toggle.textContent = "▾";
+          toggle.title = this.tr("collapse");
+        }
+      };
+
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setCollapsed(!this.collapsedFields.has(field));
+      });
+      head.addEventListener("click", (e) => {
+        const target = e.target as HTMLElement;
+        if (
+          target === head ||
+          target === meta ||
+          target.classList.contains("ai-tagger-field-name")
+        ) {
+          setCollapsed(!this.collapsedFields.has(field));
         }
       });
-
-      new Setting(grid)
-        .setName(this.tr("fEnabledName"))
-        .setDesc(this.tr("fEnabledDesc"))
-        .addToggle((t2) =>
-          t2.setValue(field.enabled).onChange(async (v) => {
-            field.enabled = v;
-            await this.plugin.saveSettings();
-          })
-        );
+      enableCheck.addEventListener("change", async () => {
+        field.enabled = enableCheck.checked;
+        card.toggleClass("is-disabled", !field.enabled);
+        await this.plugin.saveSettings();
+      });
+      del.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        fields.splice(idx, 1);
+        this.collapsedFields.delete(field);
+        await this.plugin.saveSettings();
+        this.renderFieldList(listEl);
+      });
 
       new Setting(grid)
         .setName(this.tr("fNameName"))
@@ -445,7 +545,9 @@ export class AITaggerSettingTab extends PluginSettingTab {
                 ".ai-tagger-field-name"
               ) as HTMLElement | null;
               if (nameSpan)
-                nameSpan.textContent = field.name ? field.name : this.tr("unnamed");
+                nameSpan.textContent = field.name
+                  ? field.name
+                  : this.tr("unnamed");
               await this.plugin.saveSettings();
             })
         );
@@ -475,6 +577,15 @@ export class AITaggerSettingTab extends PluginSettingTab {
           d.addOption("hybrid", this.tr("fModeHybrid"));
           d.setValue(field.mode).onChange(async (v) => {
             field.mode = v as FieldMapping["mode"];
+            const modeSpan = head.querySelector(
+              ".ai-tagger-field-mode"
+            ) as HTMLElement | null;
+            if (modeSpan) {
+              modeSpan.textContent =
+                field.mode === "generate" ? "" : modeLabel(field.mode);
+              modeSpan.style.display =
+                field.mode === "generate" ? "none" : "";
+            }
             await this.plugin.saveSettings();
           });
         });
@@ -925,6 +1036,50 @@ export class AITaggerSettingTab extends PluginSettingTab {
       await this.plugin.saveSettings();
       this.display();
       new Notice(this.tr("restoreAllNotice"));
+    });
+  }
+
+  // ============ 关于插件 ============
+  private buildAboutSection(containerEl: HTMLElement): void {
+    const card = this.card(containerEl, "aboutCardTitle", "aboutCardSub");
+
+    const info = card.createDiv({ cls: "ai-tagger-about" });
+    info.createEl("p", {
+      cls: "ai-tagger-about-line",
+      text: this.tr("aboutVersion", { version: this.plugin.manifest.version }),
+    });
+    info.createEl("p", {
+      cls: "ai-tagger-about-line",
+      text: this.tr("aboutAuthor", { author: this.plugin.manifest.author || "lusca" }),
+    });
+    info.createEl("p", {
+      cls: "ai-tagger-about-line",
+      text: this.tr("aboutLicense"),
+    });
+
+    info.createEl("p", {
+      cls: "ai-tagger-about-intro",
+      text: this.tr("aboutIntro"),
+    });
+    info.createEl("p", {
+      cls: "ai-tagger-about-intro",
+      text: this.tr("aboutThanks"),
+    });
+
+    const support = info.createEl("p", {
+      cls: "ai-tagger-about-support",
+      text: this.tr("aboutSupport"),
+    });
+
+    const qr = support.createEl("img", {
+      cls: "ai-tagger-about-qr",
+    });
+    qr.src = `data:image/png;base64,${QR_CODE_BASE64}`;
+    qr.alt = this.tr("aboutQrCaption");
+
+    info.createEl("p", {
+      cls: "ai-tagger-about-caption",
+      text: this.tr("aboutQrCaption"),
     });
   }
 }

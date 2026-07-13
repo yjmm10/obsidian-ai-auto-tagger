@@ -1,7 +1,7 @@
 import { App, Modal, Notice, Plugin, TFile } from "obsidian";
 import { DEFAULT_SETTINGS, PluginSettings } from "./types";
 import { AITaggerSettingTab } from "./settings";
-import { isInScope, tagFile } from "./tagger";
+import { collectPredefinedTags, isInScope, tagFile } from "./tagger";
 import { splitFrontmatter } from "./frontmatter";
 import { isContentSufficient } from "./text";
 
@@ -12,6 +12,9 @@ export default class AITaggerPlugin extends Plugin {
   private writingPaths: Set<string> = new Set();
   /** 内容不足而挂起、等待后续写入达标的文件（新建空文件场景） */
   private pendingCreate: Set<string> = new Set();
+  /** 预定义标签池缓存（按 tagSource+tagFilePath 签名失效） */
+  private predefinedCache: string[] | null = null;
+  private poolSig = "";
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -45,6 +48,7 @@ export default class AITaggerPlugin extends Plugin {
     if (this.settings.autoOnCreate) {
       this.registerEvent(
         this.app.vault.on("create", (file) => {
+          this.invalidatePredefined();
           if (file instanceof TFile && file.extension === "md") {
             this.scheduleAuto(file);
           }
@@ -80,6 +84,7 @@ export default class AITaggerPlugin extends Plugin {
       this.app.vault.on("delete", (file) => {
         this.pendingCreate.delete(file.path);
         this.debounceTimers.delete(file.path);
+        this.invalidatePredefined();
       })
     );
   }
@@ -97,6 +102,21 @@ export default class AITaggerPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+  }
+
+  /** 取预定义标签池（带签名缓存：tagSource/tagFilePath 变化或库结构变动时自动失效）。 */
+  async getPredefinedTags(): Promise<string[]> {
+    const sig = `${this.settings.tagSource}|${this.settings.tagFilePath}`;
+    if (this.predefinedCache && this.poolSig === sig) return this.predefinedCache;
+    const pool = await collectPredefinedTags(this.app, this.settings);
+    this.predefinedCache = pool;
+    this.poolSig = sig;
+    return pool;
+  }
+
+  /** 库结构变动（新建/删除笔记）时清空预定义池缓存，下次按需重算。 */
+  private invalidatePredefined(): void {
+    this.predefinedCache = null;
   }
 
   /**
@@ -122,7 +142,8 @@ export default class AITaggerPlugin extends Plugin {
    */
   private async runTag(
     file: TFile,
-    mode: "auto" | "manual" | "batch"
+    mode: "auto" | "manual" | "batch",
+    predefinedTags?: string[]
   ): Promise<boolean> {
     if (!isInScope(file, this.settings)) {
       if (mode === "manual")
@@ -148,7 +169,9 @@ export default class AITaggerPlugin extends Plugin {
     this.pendingCreate.delete(file.path);
     this.writingPaths.add(file.path);
     try {
-      return await tagFile(this.app, file, this.settings, mode !== "auto");
+      const pool =
+        predefinedTags ?? (await this.getPredefinedTags());
+      return await tagFile(this.app, file, this.settings, mode !== "auto", pool);
     } finally {
       this.writingPaths.delete(file.path);
     }
@@ -185,10 +208,11 @@ export default class AITaggerPlugin extends Plugin {
     new Notice(`AI Tagger: 开始批量处理 ${files.length} 个文件`);
     let ok = 0;
     let fail = 0;
+    const pool = await this.getPredefinedTags();
     await this.runPool(files, async (file) => {
       this.writingPaths.add(file.path);
       try {
-        const r = await this.runTag(file, "batch");
+        const r = await this.runTag(file, "batch", pool);
         if (r) ok++;
         else fail++;
       } catch (e) {

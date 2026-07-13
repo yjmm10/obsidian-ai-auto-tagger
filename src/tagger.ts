@@ -1,7 +1,82 @@
 import { App, Notice, TFile } from "obsidian";
-import { FieldMapping, PluginSettings } from "./types";
+import { FieldMapping, PluginSettings, TagSource } from "./types";
 import { callAI } from "./ai-client";
 import { compileNote, splitFrontmatter } from "./frontmatter";
+
+/**
+ * 收集「预定义标签池」：
+ * - file  : 读取 tagFilePath 指向的文件（每行一个标签 / YAML `tags:` 列表 / 行内 `#标签`）。
+ * - vault : 扫描库内所有 .md 笔记 frontmatter 的 tags，去重合并。
+ * - both  : 二者并集（默认）。
+ * 结果去重（大小写不敏感），保留首次出现的规范写法。
+ */
+export async function collectPredefinedTags(
+  app: App,
+  settings: PluginSettings
+): Promise<string[]> {
+  const map = new Map<string, string>();
+  const add = (vals: string[]): void => {
+    for (const v of vals) {
+      const t = String(v).trim();
+      if (!t) continue;
+      const k = t.toLowerCase();
+      if (!map.has(k)) map.set(k, t);
+    }
+  };
+  const src: TagSource = settings.tagSource;
+  if (src === "file" || src === "both") {
+    const path = settings.tagFilePath.trim();
+    if (path) {
+      const f = app.vault.getAbstractFileByPath(path);
+      if (f instanceof TFile) {
+        try {
+          const txt = await app.vault.read(f);
+          add(parseTagFile(txt));
+        } catch {
+          /* 文件不存在或读取失败：忽略 */
+        }
+      }
+    }
+  }
+  if (src === "vault" || src === "both") {
+    for (const file of app.vault.getMarkdownFiles()) {
+      try {
+        const raw = await app.vault.read(file);
+        const { frontmatter } = splitFrontmatter(raw);
+        const tags = (frontmatter as Record<string, unknown> | undefined)?.tags;
+        if (Array.isArray(tags)) add(tags.map(String));
+        else if (typeof tags === "string") add([tags]);
+      } catch {
+        /* 单文件读取失败：跳过 */
+      }
+    }
+  }
+  return Array.from(map.values());
+}
+
+/** 解析标签文件文本为标签数组（支持 YAML 列表 / 每行一个 / 行内 #标签 或逗号分隔）。 */
+function parseTagFile(txt: string): string[] {
+  const out: string[] = [];
+  const yamlMatch = txt.match(/tags:\s*\r?\n((?:\s*-\s*.+\r?\n?)+)/);
+  if (yamlMatch) {
+    yamlMatch[1].split(/\r?\n/).forEach((l) => {
+      const m = l.match(/^\s*-\s*(.+)$/);
+      if (m) out.push(m[1].trim().replace(/^["']|["']$/g, ""));
+    });
+    return out;
+  }
+  txt.split(/\r?\n/).forEach((l) => {
+    let s = l.trim();
+    if (!s) return;
+    if (s.startsWith("#")) s = s.slice(1);
+    s = s.replace(/^["']|["']$/g, "").trim();
+    s.split(/[,\uff0c]/).forEach((x) => {
+      const t = x.trim();
+      if (t) out.push(t);
+    });
+  });
+  return out;
+}
 
 /** 判断文件是否落在生效范围内（排除优先于包含）。 */
 export function isInScope(file: TFile, settings: PluginSettings): boolean {
@@ -55,7 +130,8 @@ export async function tagFile(
   app: App,
   file: TFile,
   settings: PluginSettings,
-  notice = true
+  notice = true,
+  predefinedTags: string[] = []
 ): Promise<boolean> {
   if (!isInScope(file, settings)) {
     if (notice)
@@ -86,7 +162,9 @@ export async function tagFile(
     settings.ai,
     settings.fields,
     file.basename,
-    content
+    content,
+    undefined,
+    predefinedTags
   );
   if (!res.ok || !res.data) {
     if (notice)

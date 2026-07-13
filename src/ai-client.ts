@@ -3,7 +3,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { z } from "zod";
-import { AISettings, FieldMapping } from "./types";
+import { AISettings, FieldMapping, FieldMode } from "./types";
 import { PROVIDERS, SdkProvider } from "./models";
 
 export interface AICallResult {
@@ -55,6 +55,77 @@ export function buildModel(s: AISettings, modelOverride?: any): any {
   }
 }
 
+/**
+ * 把「允许取值」自由文本（或已有标签池数组）解析为归一化（去空格、保留大小写）的候选集合。
+ * 保留原始大小写，便于把 AI 的输出映射回规范写法（如 "tech"→"Tech"）。
+ */
+function normalizeList(input: string | string[] | undefined | null): string[] {
+  if (!input) return [];
+  const raw = Array.isArray(input) ? input : String(input).split(/[,\n，、;；]/);
+  return raw.map((s) => String(s).trim()).filter((s) => s.length > 0);
+}
+
+/** 大小写不敏感相等比较（用于标签去重/过滤）。 */
+function equiv(a: string, b: string): boolean {
+  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+}
+
+/**
+ * 解析单字段的「生成模式」策略，得到：
+ * - allowed    : 约束 AI 取值的规范词表（用于提示词 [允许取值] 与回落过滤）。
+ * - strict     : true 表示 allowed 来自预定义池，回落时严格过滤，不保留越界原值。
+ * - union      : 混合模式需并入的预定义标签池（始终添加，与 AI 输出取并集去重）。
+ *
+ * 规则：
+ * - generate  : allowed = 手动 constraints（若有），union 空。
+ * - predefined: 仅能选预定义池中的值；与手动 constraints 取交集；池空时回退到 constraints。
+ * - hybrid    : AI 自由生成（allowed = 手动 constraints），union = 预定义池（始终并入）。
+ * 预定义池只对数组（tags）类字段有意义；其它类型字段池为空，predefined/hybrid 退化为约束生成。
+ */
+function resolveFieldPolicy(
+  field: FieldMapping,
+  predefinedTags: string[]
+): { allowed?: string[]; strict: boolean; union?: string[] } {
+  const manual = normalizeList(field.constraints);
+  const pool =
+    field.type === "array" ? normalizeList(predefinedTags) : [];
+  if (field.mode === "predefined") {
+    let allowed = pool.length ? pool.slice() : manual.slice();
+    if (manual.length) allowed = allowed.filter((v) => manual.some((m) => equiv(v, m)));
+    return {
+      allowed: allowed.length ? allowed : manual.length ? manual : undefined,
+      strict: true,
+      union: undefined,
+    };
+  }
+  if (field.mode === "hybrid") {
+    return {
+      allowed: manual.length ? manual : undefined,
+      strict: false,
+      union: pool,
+    };
+  }
+  // generate
+  return { allowed: manual.length ? manual : undefined, strict: false, union: undefined };
+}
+
+/** 把 AI 返回的数组值按 allowed 规范过滤；命中时映射回规范写法。
+ *  strict=false 且全部越界时保留原值（避免误清空）。 */
+function filterAllowed(
+  arr: string[],
+  allowed: string[] | undefined,
+  strict: boolean
+): string[] {
+  if (!allowed || allowed.length === 0) return arr;
+  const out: string[] = [];
+  for (const v of arr) {
+    const hit = allowed.find((a) => equiv(a, v));
+    if (hit) out.push(hit);
+  }
+  if (out.length === 0 && !strict) return arr; // 全部越界：保留原值（手动约束的容错）
+  return out;
+}
+
 /** 依据字段定义动态构建 zod schema，供 generateObject 做结构化输出。 */
 export function buildSchema(fields: FieldMapping[]): z.ZodTypeAny {
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -80,30 +151,31 @@ export function buildSchema(fields: FieldMapping[]): z.ZodTypeAny {
   return z.object(shape);
 }
 
-/** 把「允许取值」自由文本解析为归一化（去空格、小写）的候选集合。 */
-function normalizeConstraints(text: string): string[] {
-  return text
-    .split(/[,\n，、;；]/)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
-
 /**
  * 组装请求参数（纯函数，便于测试）：system / user prompt / zod schema。
- * system 提示词经过优化：明确角色、严格约束键名/类型/取值，并嵌入字段级「允许取值」。
+ * system 提示词经过优化：明确角色、严格约束键名/类型/取值，并按字段「生成模式」嵌入
+ * 预定义标签池（predefined 模式作为唯一可选项；generate/hybrid 模式叠加手动约束）。
  */
 export function buildRequestParams(
   settings: AISettings,
   fields: FieldMapping[],
   title: string,
-  content: string
+  content: string,
+  predefinedTags: string[] = []
 ): { system: string; prompt: string; schema: z.ZodTypeAny } {
   const enabled = fields.filter((f) => f.enabled && f.name.trim().length > 0);
   const fieldSpec = enabled
     .map((f) => {
-      const c = f.constraints ? f.constraints.trim() : "";
-      const cPart = c ? ` [允许取值：${c}]` : "";
-      return `- ${f.name}（类型：${f.type}）${cPart}：${f.description}`;
+      const pol = resolveFieldPolicy(f, predefinedTags);
+      const allowedStr = pol.allowed && pol.allowed.length ? pol.allowed.join(", ") : "";
+      const cPart = allowedStr ? ` [允许取值：${allowedStr}]` : "";
+      const modeHint =
+        f.mode === "predefined"
+          ? "（仅可从上述允许取值中选择，不得自创新值）"
+          : f.mode === "hybrid"
+          ? "（生成后可并入预定义标签池）"
+          : "";
+      return `- ${f.name}（类型：${f.type}）${cPart}：${f.description}${modeHint}`;
     })
     .join("\n");
   const system =
@@ -122,11 +194,13 @@ export function buildRequestParams(
 
 /**
  * 把 AI 返回的数据按字段配置强转（纯函数）。
- * 防御 SDK 偶发的类型漂移，并保证写入 frontmatter 的值类型正确。
+ * 防御 SDK 偶发的类型漂移，并保证写入 frontmatter 的值类型正确；
+ * 同时按字段「生成模式」施加预定义标签池约束（predefined 严格过滤 / hybrid 并集并入）。
  */
 export function coerceFields(
   data: Record<string, unknown> | undefined,
-  fields: FieldMapping[]
+  fields: FieldMapping[],
+  predefinedTags: string[] = []
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!data) return out;
@@ -136,6 +210,7 @@ export function coerceFields(
     if (!key) continue;
     const raw = data[key];
     if (raw === undefined || raw === null) continue;
+    const pol = resolveFieldPolicy(f, predefinedTags);
     switch (f.type) {
       case "array": {
         let arr: string[] = [];
@@ -146,15 +221,18 @@ export function coerceFields(
             .split(/[,\n，、]/)
             .map((s) => s.trim())
             .filter(Boolean);
-        // 若设置了「允许取值」，回落时过滤越界项（大小写不敏感精确匹配）。
-        const c = f.constraints ? f.constraints.trim() : "";
-        if (c && arr.length) {
-          const allowed = normalizeConstraints(c);
-          if (allowed.length) {
-            const kept = arr.filter((v) => allowed.includes(v.trim().toLowerCase()));
-            // 全部越界时保留原值，避免误清空字段。
-            if (kept.length) arr = kept;
+        // 按字段模式过滤：predefined 严格限定在池内；generate/hybrid 受手动约束。
+        arr = filterAllowed(arr, pol.allowed, pol.strict);
+        // 混合模式：始终并入预定义标签池（去重，保留大小写）。
+        if (pol.union && pol.union.length) {
+          const set = new Map<string, string>();
+          for (const v of [...arr, ...pol.union]) {
+            const t = v.trim();
+            if (!t) continue;
+            const k = t.toLowerCase();
+            if (!set.has(k)) set.set(k, t);
           }
+          arr = Array.from(set.values());
         }
         if (arr.length) out[key] = arr;
         break;
@@ -214,7 +292,8 @@ export async function callAI(
   fields: FieldMapping[],
   title: string,
   content: string,
-  modelOverride?: any
+  modelOverride?: any,
+  predefinedTags: string[] = []
 ): Promise<AICallResult> {
   const cfgErr = validateSettings(settings);
   if (cfgErr.length) return { ok: false, error: "配置无效：" + cfgErr.join("；") };
@@ -226,7 +305,8 @@ export async function callAI(
     settings,
     enabled,
     title,
-    content
+    content,
+    predefinedTags
   );
 
   const model = buildModel(settings, modelOverride);
@@ -242,7 +322,10 @@ export async function callAI(
       maxRetries: 0,
       abortSignal: timeoutSignal(settings.requestTimeout),
     });
-    return { ok: true, data: coerceFields(object as Record<string, unknown>, enabled) };
+    return {
+      ok: true,
+      data: coerceFields(object as Record<string, unknown>, enabled, predefinedTags),
+    };
   } catch (e) {
     return { ok: false, error: describeError(e) };
   }

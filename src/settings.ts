@@ -78,6 +78,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
     } else {
       this.buildFieldSection(content);
       this.buildScopeSection(content);
+      this.buildPredefinedSection(content);
       this.buildBehaviorSection(content);
       this.buildResetSection(content);
     }
@@ -366,6 +367,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
         type: "string",
         description: "",
         constraints: "",
+        mode: "generate",
       });
       await this.plugin.saveSettings();
       this.renderFieldList(listEl);
@@ -465,6 +467,19 @@ export class AITaggerSettingTab extends PluginSettingTab {
         });
 
       new Setting(grid)
+        .setName(this.tr("fModeName"))
+        .setDesc(this.tr("fModeDesc"))
+        .addDropdown((d) => {
+          d.addOption("generate", this.tr("fModeGenerate"));
+          d.addOption("predefined", this.tr("fModePredefined"));
+          d.addOption("hybrid", this.tr("fModeHybrid"));
+          d.setValue(field.mode).onChange(async (v) => {
+            field.mode = v as FieldMapping["mode"];
+            await this.plugin.saveSettings();
+          });
+        });
+
+      new Setting(grid)
         .setName(this.tr("fDescName"))
         .setDesc(this.tr("fDescDesc"))
         .addTextArea((t2) =>
@@ -523,6 +538,41 @@ export class AITaggerSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         })
       );
+  }
+
+  // ============ 预定义标签池 ============
+  private buildPredefinedSection(containerEl: HTMLElement): void {
+    const card = this.card(containerEl, "predCardTitle", "predCardSub");
+    const s = this.plugin.settings;
+
+    new Setting(card)
+      .setName(this.tr("tagSourceName"))
+      .setDesc(this.tr("tagSourceDesc"))
+      .addDropdown((d) => {
+        d.addOption("file", this.tr("tagSourceFile"));
+        d.addOption("vault", this.tr("tagSourceVault"));
+        d.addOption("both", this.tr("tagSourceBoth"));
+        d.setValue(s.tagSource).onChange(async (v) => {
+          s.tagSource = v as PluginSettings["tagSource"];
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      });
+
+    if (s.tagSource === "file" || s.tagSource === "both") {
+      new Setting(card)
+        .setName(this.tr("tagFilePathName"))
+        .setDesc(this.tr("tagFilePathDesc"))
+        .addText((t2) =>
+          t2
+            .setPlaceholder("tags.md")
+            .setValue(s.tagFilePath)
+            .onChange(async (v) => {
+              s.tagFilePath = v.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+    }
   }
 
   private renderStringList(
@@ -751,6 +801,12 @@ export class AITaggerSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         })
       );
+
+    // 触发说明提示框（剪藏/新建/保存/更新/手动 的对应关系 + 300 字门控）
+    card.createEl("p", {
+      cls: "ai-tagger-info-note",
+      text: this.tr("triggerNote", { min: s.minContentChars }),
+    });
 
     new Setting(card)
       .setName(this.tr("debounceName"))

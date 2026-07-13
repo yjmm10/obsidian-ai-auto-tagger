@@ -103,10 +103,10 @@ check(
 // ---------- 3. buildSchema ----------
 console.log("\n[3] 动态 zod schema buildSchema");
 const fields: FieldMapping[] = [
-  { enabled: true, name: "tags", type: "array", description: "标签" },
-  { enabled: true, name: "summary", type: "string", description: "摘要" },
-  { enabled: true, name: "count", type: "number", description: "数量" },
-  { enabled: true, name: "ok", type: "boolean", description: "是否" },
+  { enabled: true, name: "tags", type: "array", description: "标签", mode: "generate" },
+  { enabled: true, name: "summary", type: "string", description: "摘要", mode: "generate" },
+  { enabled: true, name: "count", type: "number", description: "数量", mode: "generate" },
+  { enabled: true, name: "ok", type: "boolean", description: "是否", mode: "generate" },
 ];
 const schema = buildSchema(fields) as any;
 const parsed = schema.safeParse({
@@ -209,11 +209,11 @@ const JSON_CONTENT = JSON.stringify({
     extraInstruction: "",
   };
   const tagFields: FieldMapping[] = [
-    { enabled: true, name: "tags", type: "array", description: "标签" },
-    { enabled: true, name: "summary", type: "string", description: "摘要" },
-    { enabled: true, name: "category", type: "string", description: "分类" },
-    { enabled: true, name: "readCount", type: "number", description: "阅读数" },
-    { enabled: true, name: "published", type: "boolean", description: "是否发布" },
+    { enabled: true, name: "tags", type: "array", description: "标签", mode: "generate" },
+    { enabled: true, name: "summary", type: "string", description: "摘要", mode: "generate" },
+    { enabled: true, name: "category", type: "string", description: "分类", mode: "generate" },
+    { enabled: true, name: "readCount", type: "number", description: "阅读数", mode: "generate" },
+    { enabled: true, name: "published", type: "boolean", description: "是否发布", mode: "generate" },
   ];
 
   const r = await callAI(cfg, tagFields, "测试标题", "这是正文内容");
@@ -235,7 +235,7 @@ const JSON_CONTENT = JSON.stringify({
 
   // buildRequestParams：字段「允许取值」应进入 system
   const constrainedFields: FieldMapping[] = [
-    { enabled: true, name: "category", type: "string", description: "分类", constraints: "技术, 读书, 生活" },
+    { enabled: true, name: "category", type: "string", description: "分类", constraints: "技术, 读书, 生活", mode: "generate" },
   ];
   const rpC = buildRequestParams(cfg, constrainedFields, "t", "c");
   check("buildRequestParams 注入允许取值", rpC.system.includes("技术, 读书, 生活"));
@@ -243,7 +243,7 @@ const JSON_CONTENT = JSON.stringify({
   // ---------- 7. 字段「允许取值」约束（coerceFields 过滤）----------
   console.log("\n[7] 字段允许取值约束");
   const cFields: FieldMapping[] = [
-    { enabled: true, name: "tags", type: "array", description: "标签", constraints: "技术, 读书, 生活" },
+    { enabled: true, name: "tags", type: "array", description: "标签", constraints: "技术, 读书, 生活", mode: "generate" },
   ];
   const cData = { tags: ["技术", "美食", "读书", "运动"] };
   const cOut = coerceFields(cData, cFields);
@@ -276,6 +276,48 @@ const JSON_CONTENT = JSON.stringify({
   check("阈值=0 始终达标", isContentSufficient("", 0) === true);
   check("刚好达阈值", isContentSufficient("一二三四五六七八九十", 10) === true);
   check("差一个字不达标", isContentSufficient("一二三四五六七八九", 10) === false);
+
+  // ---------- 8. 字段生成模式（mode）：predefined / hybrid ----------
+  console.log("\n[8] 字段生成模式 mode");
+  const POOL = ["技术", "读书", "运动"];
+  // predefined：仅保留池内值，严格过滤，越界不保留
+  const pFields: FieldMapping[] = [
+    { enabled: true, name: "tags", type: "array", description: "标签", constraints: "", mode: "predefined" },
+  ];
+  const pOut = coerceFields({ tags: ["技术", "美食", "读书", "运动"] }, pFields, POOL);
+  check(
+    "predefined 仅保留预定义池内标签",
+    Array.isArray(pOut.tags) &&
+      (pOut.tags as string[]).length === 3 &&
+      (pOut.tags as string[]).includes("技术") &&
+      (pOut.tags as string[]).includes("读书") &&
+      (pOut.tags as string[]).includes("运动") &&
+      !(pOut.tags as string[]).includes("美食")
+  );
+  // 全部越界时（predefined 严格）不写入该字段（避免写入空 tags）
+  const pOut2 = coerceFields({ tags: ["美食", "旅行"] }, pFields, POOL);
+  check(
+    "predefined 全部越界时不写入字段",
+    !("tags" in pOut2)
+  );
+  // hybrid：AI 自由生成 ∪ 预定义池（并集去重，含池内全部标签）
+  const hFields: FieldMapping[] = [
+    { enabled: true, name: "tags", type: "array", description: "标签", constraints: "", mode: "hybrid" },
+  ];
+  const hOut = coerceFields({ tags: ["美食", "学习"] }, hFields, POOL);
+  check(
+    "hybrid 并入预定义池（并集去重）",
+    Array.isArray(hOut.tags) &&
+      (hOut.tags as string[]).length === 5 &&
+      (hOut.tags as string[]).includes("技术") &&
+      (hOut.tags as string[]).includes("读书") &&
+      (hOut.tags as string[]).includes("运动") &&
+      (hOut.tags as string[]).includes("美食") &&
+      (hOut.tags as string[]).includes("学习")
+  );
+  // predefined 模式下 buildRequestParams 将池注入 [允许取值]
+  const rpP = buildRequestParams(cfg, pFields, "t", "c", POOL);
+  check("predefined 模式在提示词注入预定义池", rpP.system.includes("技术, 读书, 运动"));
 
   console.log(`\n结果：通过 ${passed}，失败 ${failed}`);
   if (failed > 0) process.exit(1);

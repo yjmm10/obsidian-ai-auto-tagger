@@ -515,3 +515,15 @@
   gap: 10px;
   margin-top: 12px;
 }
+
+/* ---------- 行内信息提示框（触发说明等） ---------- */
+.ai-tagger-info-note {
+  margin: 4px 2px 12px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.6;
+}

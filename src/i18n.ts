@@ -75,9 +75,31 @@ const zh: Record<string, string> = {
   fConstraintsName: "允许取值",
   fConstraintsDesc:
     "可选。限定该字段的取值范围，如「技术, 读书, 生活」或与词表一致。AI 仅可从中选择，数组字段回落时也会过滤越界值。",
+  fModeName: "生成模式",
+  fModeDesc:
+    "该字段的值如何产生：直接生成=AI 自由产出；使用预定标签=仅从预定义标签池中选择；混合=AI 生成 + 始终并入预定义标签池。",
+  fModeGenerate: "直接生成",
+  fModePredefined: "使用预定标签",
+  fModeHybrid: "混合（生成 + 预定义）",
   fDelete: "删除",
   collapse: "折叠/展开该字段",
   expand: "展开该字段",
+
+  // ---------- 预定义标签池 ----------
+  predCardTitle: "预定义标签池",
+  predCardSub:
+    "为字段的「使用预定标签 / 混合」模式提供词表来源：可读取一个标签文件，或自动扫描库内所有笔记的 tags，或二者并集。",
+  tagSourceName: "标签来源",
+  tagSourceDesc: "预定义标签取自何处。",
+  tagSourceFile: "标签文件",
+  tagSourceVault: "自动检索库",
+  tagSourceBoth: "两者（文件 + 库）",
+  tagFilePathName: "标签文件路径",
+  tagFilePathDesc: "相对库根的路径，如 tags.md；每行一个标签，或 YAML `tags:` 列表。",
+
+  // ---------- 触发说明 ----------
+  triggerNote:
+    "触发说明：新建 / 网页剪藏（同属「新建自动打标」）；保存 / 更新（同属「内容变更自动打标」）；手动命令始终可用。默认自动触发，正文满 {min} 字自动更新，不足 {min} 字仅可手动触发。",
 
   // ---------- 生效范围 ----------
   scopeCardTitle: "生效范围",
@@ -96,10 +118,11 @@ const zh: Record<string, string> = {
   // ---------- 触发与行为 ----------
   behaviorCardTitle: "触发与行为",
   behaviorCardSub: "控制何时调用 AI、写入策略与性能参数。",
-  autoCreateName: "新建文件自动打标",
-  autoCreateDesc: "新建 .md 文件或网页剪藏生成文件时触发（防抖后）。",
-  autoModifyName: "内容新增自动打标",
-  autoModifyDesc: "已有文件内容变化后触发（默认关闭，避免频繁调用产生费用）。",
+  autoCreateName: "新建 / 剪藏自动打标",
+  autoCreateDesc: "新建 .md 文件或网页剪藏生成文件时触发（防抖后）。默认开启。",
+  autoModifyName: "保存 / 更新自动打标",
+  autoModifyDesc:
+    "已有文件内容新增或保存后触发（防抖后）。默认开启；关闭则仅手动命令可打标。",
   debounceName: "防抖时间（毫秒）",
   debounceDesc: "停止输入/写入后等待多久再调用 AI。",
   tagPolicyName: "已有标签处理策略",
@@ -202,9 +225,32 @@ const en: Record<string, string> = {
   fConstraintsName: "Allowed values",
   fConstraintsDesc:
     "Optional. Restrict the allowed values, e.g. 'tech, reading, life'. AI may only choose from them; array fields are also filtered on fallback.",
+  fModeName: "Generation mode",
+  fModeDesc:
+    "How this field's value is produced: Generate=AI free output; Use predefined=only pick from the predefined tag pool; Hybrid=AI generates + always merge the predefined pool.",
+  fModeGenerate: "Generate directly",
+  fModePredefined: "Use predefined tags",
+  fModeHybrid: "Hybrid (generate + predefined)",
   fDelete: "Delete",
   collapse: "Collapse / expand this field",
   expand: "Expand this field",
+
+  // ---------- Predefined tag pool ----------
+  predCardTitle: "Predefined tag pool",
+  predCardSub:
+    "Source of the vocabulary for a field's 'Use predefined / Hybrid' mode: read a tag file, or auto-scan all notes' tags in the vault, or both.",
+  tagSourceName: "Tag source",
+  tagSourceDesc: "Where predefined tags come from.",
+  tagSourceFile: "Tag file",
+  tagSourceVault: "Scan vault",
+  tagSourceBoth: "Both (file + vault)",
+  tagFilePathName: "Tag file path",
+  tagFilePathDesc:
+    "Path relative to vault root, e.g. tags.md; one tag per line, or a YAML 'tags:' list.",
+
+  // ---------- Trigger note ----------
+  triggerNote:
+    "Triggers: new file / web clip (both are 'Auto-tag on create'); save / update (both are 'Auto-tag on change'); the manual command is always available. Auto is on by default; notes with at least {min} chars auto-update, shorter ones can only be tagged manually.",
 
   // ---------- Scope ----------
   scopeCardTitle: "Scope",
@@ -223,12 +269,12 @@ const en: Record<string, string> = {
   // ---------- Triggers & behavior ----------
   behaviorCardTitle: "Triggers & behavior",
   behaviorCardSub: "Control when AI is called, write policy and performance params.",
-  autoCreateName: "Auto-tag new files",
+  autoCreateName: "Auto-tag on new / clip",
   autoCreateDesc:
-    "Triggers when a new .md file is created or clipped from web (after debounce).",
-  autoModifyName: "Auto-tag on content change",
+    "Triggers when a new .md file is created or clipped from web (after debounce). On by default.",
+  autoModifyName: "Auto-tag on save / update",
   autoModifyDesc:
-    "Triggers after existing file content changes (off by default to avoid frequent paid calls).",
+    "Triggers after existing file content changes or is saved (after debounce). On by default; turn off to allow manual tagging only.",
   debounceName: "Debounce (ms)",
   debounceDesc: "Wait this long after typing/writing stops before calling AI.",
   tagPolicyName: "Existing-tag policy",

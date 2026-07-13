@@ -80,8 +80,17 @@ export function buildSchema(fields: FieldMapping[]): z.ZodTypeAny {
   return z.object(shape);
 }
 
+/** 把「允许取值」自由文本解析为归一化（去空格、小写）的候选集合。 */
+function normalizeConstraints(text: string): string[] {
+  return text
+    .split(/[,\n，、;；]/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 /**
  * 组装请求参数（纯函数，便于测试）：system / user prompt / zod schema。
+ * system 提示词经过优化：明确角色、严格约束键名/类型/取值，并嵌入字段级「允许取值」。
  */
 export function buildRequestParams(
   settings: AISettings,
@@ -91,12 +100,22 @@ export function buildRequestParams(
 ): { system: string; prompt: string; schema: z.ZodTypeAny } {
   const enabled = fields.filter((f) => f.enabled && f.name.trim().length > 0);
   const fieldSpec = enabled
-    .map((f) => `- ${f.name}（类型：${f.type}）：${f.description}`)
+    .map((f) => {
+      const c = f.constraints ? f.constraints.trim() : "";
+      const cPart = c ? ` [允许取值：${c}]` : "";
+      return `- ${f.name}（类型：${f.type}）${cPart}：${f.description}`;
+    })
     .join("\n");
   const system =
     `${settings.extraInstruction ? settings.extraInstruction + "\n" : ""}` +
-    `根据用户提供的中文笔记，提取结构化元数据。\n` +
-    `只输出一个 JSON 对象，键必须严格等于下列字段名，值必须符合对应类型：\n${fieldSpec}`;
+    `你是一名严谨的中文笔记元数据提取助手。\n` +
+    `请根据用户提供的笔记（标题 + 正文），提取下方定义的字段，并只输出一个 JSON 对象。\n\n` +
+    `严格要求：\n` +
+    `1. JSON 顶层键名必须与下方「字段定义」中的名称完全一致，不得增删、改写或翻译。\n` +
+    `2. 每个字段的值必须严格符合其声明类型（string=字符串；array=字符串数组；number=数字；boolean=true/false）。\n` +
+    `3. 若字段标注了「允许取值」，则只能从该范围内挑选，不得自创新值。\n` +
+    `4. 不要输出任何解释、Markdown 代码块标记或多余文字，直接输出 JSON。\n\n` +
+    `字段定义：\n${fieldSpec}`;
   const prompt = `标题：${title}\n\n内容：\n${content}`;
   return { system, prompt, schema: buildSchema(enabled) };
 }
@@ -119,12 +138,25 @@ export function coerceFields(
     if (raw === undefined || raw === null) continue;
     switch (f.type) {
       case "array": {
-        if (Array.isArray(raw)) out[key] = raw.map((v) => String(v));
+        let arr: string[] = [];
+        if (Array.isArray(raw))
+          arr = raw.map((v) => String(v).trim()).filter(Boolean);
         else if (typeof raw === "string")
-          out[key] = raw
+          arr = raw
             .split(/[,\n，、]/)
             .map((s) => s.trim())
             .filter(Boolean);
+        // 若设置了「允许取值」，回落时过滤越界项（大小写不敏感精确匹配）。
+        const c = f.constraints ? f.constraints.trim() : "";
+        if (c && arr.length) {
+          const allowed = normalizeConstraints(c);
+          if (allowed.length) {
+            const kept = arr.filter((v) => allowed.includes(v.trim().toLowerCase()));
+            // 全部越界时保留原值，避免误清空字段。
+            if (kept.length) arr = kept;
+          }
+        }
+        if (arr.length) out[key] = arr;
         break;
       }
       case "number": {

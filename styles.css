@@ -375,3 +375,53 @@
   color: var(--interactive-accent);
   font-weight: 600;
 }
+
+/* ---------- 行尾幽灵按钮 / 危险按钮 ---------- */
+.ai-tagger-row-end {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.ai-tagger-ghost-btn {
+  appearance: none;
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: var(--radius-s);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.ai-tagger-ghost-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+  border-color: var(--text-muted);
+}
+
+.ai-tagger-danger-btn {
+  appearance: none;
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-error);
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: var(--radius-s);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.ai-tagger-danger-btn:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--text-error);
+}
+
+.ai-tagger-danger-btn.is-armed {
+  color: var(--text-on-accent);
+  background: var(--text-error);
+  border-color: var(--text-error);
+}

@@ -233,6 +233,39 @@ const JSON_CONTENT = JSON.stringify({
   check("buildRequestParams 含 system 与 prompt", !!rp.system && !!rp.prompt);
   check("buildRequestParams schema 为 zod", typeof (rp.schema as any)?.safeParse === "function");
 
+  // buildRequestParams：字段「允许取值」应进入 system
+  const constrainedFields: FieldMapping[] = [
+    { enabled: true, name: "category", type: "string", description: "分类", constraints: "技术, 读书, 生活" },
+  ];
+  const rpC = buildRequestParams(cfg, constrainedFields, "t", "c");
+  check("buildRequestParams 注入允许取值", rpC.system.includes("技术, 读书, 生活"));
+
+  // ---------- 7. 字段「允许取值」约束（coerceFields 过滤）----------
+  console.log("\n[7] 字段允许取值约束");
+  const cFields: FieldMapping[] = [
+    { enabled: true, name: "tags", type: "array", description: "标签", constraints: "技术, 读书, 生活" },
+  ];
+  const cData = { tags: ["技术", "美食", "读书", "运动"] };
+  const cOut = coerceFields(cData, cFields);
+  check(
+    "数组字段仅保留允许取值",
+    Array.isArray(cOut.tags) &&
+      (cOut.tags as string[]).length === 2 &&
+      (cOut.tags as string[]).includes("技术") &&
+      (cOut.tags as string[]).includes("读书") &&
+      !(cOut.tags as string[]).includes("美食")
+  );
+  // 全部越界时保留原值，避免清空
+  const cData2 = { tags: ["美食", "运动"] };
+  const cOut2 = coerceFields(cData2, cFields);
+  check("全部越界时保留原值不清空", Array.isArray(cOut2.tags) && (cOut2.tags as string[]).length === 2);
+  // 无约束时不过滤
+  const noC: FieldMapping[] = [
+    { enabled: true, name: "tags", type: "array", description: "标签", constraints: "" },
+  ];
+  const noCOut = coerceFields(cData, noC);
+  check("无约束时不过滤", Array.isArray(noCOut.tags) && (noCOut.tags as string[]).length === 4);
+
   // ---------- 5. 内容达标门控（isContentSufficient）----------
   console.log("\n[5] 内容达标门控 isContentSufficient");
   check("空文件不达标", isContentSufficient("", 30) === false);

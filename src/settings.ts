@@ -1,6 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import AITaggerPlugin from "./main";
-import { FieldMapping, FieldType } from "./types";
+import { FieldMapping, FieldType, DEFAULT_SETTINGS, PluginSettings } from "./types";
 import {
   PROVIDERS,
   modelsForProvider,
@@ -71,6 +71,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
       this.buildFieldSection(content);
       this.buildScopeSection(content);
       this.buildBehaviorSection(content);
+      this.buildResetSection(content);
     }
   }
 
@@ -260,6 +261,23 @@ export class AITaggerSettingTab extends PluginSettingTab {
           })
       );
 
+    // 重置参数（仅重置可调节项：温度 / top_p / 最大输出 / 超时；不动厂商、Key、模型）
+    const paramResetRow = card.createDiv({ cls: "ai-tagger-row-end" });
+    const resetParamsBtn = paramResetRow.createEl("button", {
+      text: "重置参数",
+      cls: "ai-tagger-ghost-btn",
+    });
+    resetParamsBtn.addEventListener("click", async () => {
+      const d = DEFAULT_SETTINGS.ai;
+      ai.temperature = d.temperature;
+      ai.topP = d.topP;
+      ai.maxTokens = d.maxTokens;
+      ai.requestTimeout = d.requestTimeout;
+      await this.plugin.saveSettings();
+      this.display();
+      new Notice("AI Tagger：已重置模型参数");
+    });
+
     new Setting(card)
       .setName("自定义 system 提示前缀")
       .setDesc("追加在字段说明前的额外指令，用于约束输出风格/语言等。")
@@ -313,6 +331,21 @@ export class AITaggerSettingTab extends PluginSettingTab {
     const listEl = card.createDiv();
     this.renderFieldList(listEl);
 
+    // 恢复默认字段
+    const resetRow = card.createDiv({ cls: "ai-tagger-row-end" });
+    const resetFieldsBtn = resetRow.createEl("button", {
+      text: "恢复默认字段",
+      cls: "ai-tagger-ghost-btn",
+    });
+    resetFieldsBtn.addEventListener("click", async () => {
+      this.plugin.settings.fields = DEFAULT_SETTINGS.fields.map((f) => ({
+        ...f,
+      }));
+      await this.plugin.saveSettings();
+      this.renderFieldList(listEl);
+      new Notice("AI Tagger：已恢复默认字段");
+    });
+
     const addBtn = card.createEl("button", {
       text: "+ 添加字段",
       cls: "ai-tagger-add-btn",
@@ -323,6 +356,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
         name: "",
         type: "string",
         description: "",
+        constraints: "",
       });
       await this.plugin.saveSettings();
       this.renderFieldList(listEl);
@@ -398,6 +432,22 @@ export class AITaggerSettingTab extends PluginSettingTab {
         .addTextArea((t) =>
           t.setValue(field.description).onChange(async (v) => {
             field.description = v;
+            await this.plugin.saveSettings();
+          })
+        )
+        .setClass("ai-tagger-span2")
+        .then((st) => {
+          (st.components[0] as any).inputEl.rows = 2;
+        });
+
+      new Setting(grid)
+        .setName("允许取值")
+        .setDesc(
+          "可选。限定该字段的取值范围，如「技术, 读书, 生活」或与词表一致。AI 仅可从中选择，数组字段回落时也会过滤越界值。"
+        )
+        .addTextArea((t) =>
+          t.setValue(field.constraints).onChange(async (v) => {
+            field.constraints = v;
             await this.plugin.saveSettings();
           })
         )
@@ -737,5 +787,42 @@ export class AITaggerSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+  }
+
+  // ============ 恢复全部默认配置 ============
+  private buildResetSection(containerEl: HTMLElement): void {
+    const card = this.card(
+      containerEl,
+      "恢复配置",
+      "把本插件的所有设置恢复为出厂默认值（含 AI 配置、字段、范围与行为）。此操作不可撤销。"
+    );
+    const row = card.createDiv({ cls: "ai-tagger-row-end" });
+    const btn = row.createEl("button", {
+      text: "恢复全部默认配置",
+      cls: "ai-tagger-danger-btn",
+    });
+    let armed = false;
+    let timer: number | undefined;
+    btn.addEventListener("click", async () => {
+      if (!armed) {
+        armed = true;
+        btn.textContent = "确认恢复？再次点击将清空当前配置";
+        btn.addClass("is-armed");
+        if (timer) window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          armed = false;
+          btn.textContent = "恢复全部默认配置";
+          btn.removeClass("is-armed");
+        }, 4000);
+        return;
+      }
+      if (timer) window.clearTimeout(timer);
+      // 深拷贝默认配置，避免引用同一对象
+      const fresh: PluginSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+      this.plugin.settings = fresh;
+      await this.plugin.saveSettings();
+      this.display();
+      new Notice("AI Tagger：已恢复全部默认配置");
+    });
   }
 }

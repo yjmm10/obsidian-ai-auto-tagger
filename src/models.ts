@@ -40,8 +40,10 @@ export interface ProviderInfo {
   apiKeyUrl?: string;
   /** 是否需要 API Key（本地 Ollama 无需） */
   requiresKey: boolean;
-  /** 设置面板里的说明文字 */
+  /** 设置面板里的说明文字（中文） */
   note: string;
+  /** 设置面板里的说明文字（英文） */
+  noteEn: string;
 }
 
 export interface BuiltinModel {
@@ -63,6 +65,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://platform.openai.com/api-keys",
     requiresKey: true,
     note: "官方 API。Base URL 一般不用改。",
+    noteEn: "Official API. Base URL usually needs no change.",
   },
   anthropic: {
     id: "anthropic",
@@ -71,6 +74,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://console.anthropic.com/settings/keys",
     requiresKey: true,
     note: "原生 Claude 接口，模型名形如 claude-3-5-sonnet-latest。",
+    noteEn: "Native Claude endpoint; model names like claude-3-5-sonnet-latest.",
   },
   google: {
     id: "google",
@@ -79,6 +83,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://aistudio.google.com/apikey",
     requiresKey: true,
     note: "原生 Gemini 接口，模型名形如 gemini-1.5-flash。",
+    noteEn: "Native Gemini endpoint; model names like gemini-1.5-flash.",
   },
   ollama: {
     id: "ollama",
@@ -87,6 +92,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     defaultBaseUrl: "http://localhost:11434/v1",
     requiresKey: false,
     note: "本地模型，无需 Key。需先启动 Ollama 并开启开放端口。",
+    noteEn: "Local model, no key needed. Start Ollama and open its port first.",
   },
   deepseek: {
     id: "deepseek",
@@ -96,6 +102,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://platform.deepseek.com/api_keys",
     requiresKey: true,
     note: "OpenAI 兼容，模型如 deepseek-chat / deepseek-reasoner。",
+    noteEn: "OpenAI-compatible; models like deepseek-chat / deepseek-reasoner.",
   },
   zhipu: {
     id: "zhipu",
@@ -106,6 +113,8 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     requiresKey: true,
     note:
       "OpenAI 兼容。标准地址如上；coding 套餐请把 Base URL 改为 .../api/coding/paas/v4。",
+    noteEn:
+      "OpenAI-compatible. Standard URL above; for the coding plan change Base URL to .../api/coding/paas/v4.",
   },
   qwen: {
     id: "qwen",
@@ -115,6 +124,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://dashscope.console.aliyun.com/apiKey",
     requiresKey: true,
     note: "OpenAI 兼容模式地址如上，模型如 qwen-max / qwen-plus。",
+    noteEn: "OpenAI-compatible mode URL above; models like qwen-max / qwen-plus.",
   },
   doubao: {
     id: "doubao",
@@ -124,6 +134,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://console.volcengine.com/ark",
     requiresKey: true,
     note: "火山方舟兼容地址如上，模型为 Ark 推理接入点 ID。",
+    noteEn: "Volcano Ark compatible URL above; model is the Ark endpoint ID.",
   },
   moonshot: {
     id: "moonshot",
@@ -133,6 +144,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://platform.moonshot.cn/console/api-keys",
     requiresKey: true,
     note: "OpenAI 兼容，模型如 moonshot-v1-8k/32k/128k。",
+    noteEn: "OpenAI-compatible; models like moonshot-v1-8k/32k/128k.",
   },
   openrouter: {
     id: "openrouter",
@@ -142,6 +154,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://openrouter.ai/keys",
     requiresKey: true,
     note: "聚合多家开源/闭源模型，模型名带前缀如 openai/gpt-4o。",
+    noteEn: "Aggregates many open/closed models; names prefixed like openai/gpt-4o.",
   },
   groq: {
     id: "groq",
@@ -151,6 +164,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://console.groq.com/keys",
     requiresKey: true,
     note: "极速推理，模型如 llama-3.1-70b-versatile。",
+    noteEn: "Ultra-fast inference; models like llama-3.1-70b-versatile.",
   },
   mistral: {
     id: "mistral",
@@ -160,6 +174,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://console.mistral.ai/api-keys/",
     requiresKey: true,
     note: "模型如 mistral-large-latest。",
+    noteEn: "Models like mistral-large-latest.",
   },
 };
 

@@ -59,6 +59,8 @@ export interface PluginSettings {
   minContentChars: number;
   /** 批量处理并发数 */
   concurrency: number;
+  /** 设置界面语言：zh=中文（默认），en=英文 */
+  locale: "zh" | "en";
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -108,4 +110,5 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   maxContentChars: 1000,
   minContentChars: 300,
   concurrency: 5,
+  locale: "zh",
 };

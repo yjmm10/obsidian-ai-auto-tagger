@@ -8,6 +8,7 @@ import {
   ProviderId,
 } from "./models";
 import { verifyConnection } from "./ai-client";
+import { t, Locale } from "./i18n";
 
 type TabId = "tag" | "ai";
 
@@ -15,10 +16,21 @@ export class AITaggerSettingTab extends PluginSettingTab {
   plugin: AITaggerPlugin;
   /** 当前激活的标签页；用实例字段记住，避免 display() 重渲染时丢失。 */
   private activeTab: TabId = "tag";
+  /** 折叠的字段（按对象引用记录，避免索引漂移导致错乱） */
+  private collapsedFields = new Set<FieldMapping>();
 
   constructor(app: App, plugin: AITaggerPlugin) {
     super(app, plugin);
     this.plugin = plugin;
+  }
+
+  /** 当前语言 */
+  private get locale(): Locale {
+    return this.plugin.settings.locale;
+  }
+  /** 翻译快捷方法 */
+  private tr(key: string, vars?: Record<string, string | number>): string {
+    return t(this.locale, key, vars);
   }
 
   display(): void {
@@ -26,28 +38,24 @@ export class AITaggerSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.addClass("ai-tagger-settings");
 
-    // 吸顶头部容器：标题 + 标签导航 + 说明，滚动时固定不动
+    // 吸顶头部容器：标题 + 语言切换 + 标签导航 + 说明
     const headerEl = containerEl.createDiv({ cls: "ai-tagger-header" });
-    headerEl.createEl("h2", { text: "AI Auto Tagger" });
+
+    // 顶部行：标题（左） + 语言切换（右）
+    const topRow = headerEl.createDiv({ cls: "ai-tagger-header-top" });
+    topRow.createEl("h2", { text: "AI Auto Tagger" });
+    this.buildLangSwitch(topRow);
 
     // 顶部分段标签导航
-    const tabs: { id: TabId; label: string; desc: string }[] = [
-      {
-        id: "tag",
-        label: "🏷 AI 打标签",
-        desc: "核心功能：定义提取字段、生效范围、触发与写入行为。",
-      },
-      {
-        id: "ai",
-        label: "⚙ AI 配置",
-        desc: "选择厂商、模型、密钥与调用参数，并测试连接。",
-      },
+    const tabs: { id: TabId; labelKey: string; descKey: string }[] = [
+      { id: "tag", labelKey: "tabTagLabel", descKey: "tabTagDesc" },
+      { id: "ai", labelKey: "tabAiLabel", descKey: "tabAiDesc" },
     ];
 
     const navEl = headerEl.createDiv({ cls: "ai-tagger-tab-nav" });
     tabs.forEach((tab) => {
       const btn = navEl.createEl("button", {
-        text: tab.label,
+        text: this.tr(tab.labelKey),
         cls: "ai-tagger-tab-btn" + (this.activeTab === tab.id ? " is-active" : ""),
       });
       btn.addEventListener("click", () => {
@@ -57,10 +65,10 @@ export class AITaggerSettingTab extends PluginSettingTab {
       });
     });
 
-    const active = tabs.find((t) => t.id === this.activeTab)!;
+    const active = tabs.find((t2) => t2.id === this.activeTab)!;
     headerEl.createEl("p", {
       cls: "setting-item-description ai-tagger-tab-desc",
-      text: active.desc,
+      text: this.tr(active.descKey),
     });
 
     const content = containerEl.createDiv({ cls: "ai-tagger-tab-content" });
@@ -75,33 +83,50 @@ export class AITaggerSettingTab extends PluginSettingTab {
     }
   }
 
+  /** 头部右上角的语言切换（中 / EN） */
+  private buildLangSwitch(parent: HTMLElement): void {
+    const wrap = parent.createDiv({ cls: "ai-tagger-lang" });
+    (["zh", "en"] as Locale[]).forEach((lc) => {
+      const btn = wrap.createEl("button", {
+        text: lc === "zh" ? "中" : "EN",
+        cls:
+          "ai-tagger-lang-btn" +
+          (this.plugin.settings.locale === lc ? " is-active" : ""),
+        title: this.tr("langName"),
+      });
+      btn.addEventListener("click", async () => {
+        if (this.plugin.settings.locale === lc) return;
+        this.plugin.settings.locale = lc;
+        await this.plugin.saveSettings();
+        this.display();
+      });
+    });
+  }
+
   /** 生成一个分区卡片，返回卡片容器（设置项挂在其下）。 */
   private card(
     parent: HTMLElement,
-    title: string,
-    sub?: string
+    titleKey: string,
+    subKey?: string
   ): HTMLElement {
     const card = parent.createDiv({ cls: "ai-tagger-card" });
     const head = card.createDiv({ cls: "ai-tagger-card-head" });
-    head.createEl("div", { cls: "ai-tagger-card-title", text: title });
-    if (sub) head.createEl("div", { cls: "ai-tagger-card-sub", text: sub });
+    head.createEl("div", { cls: "ai-tagger-card-title", text: this.tr(titleKey) });
+    if (subKey) head.createEl("div", { cls: "ai-tagger-card-sub", text: this.tr(subKey) });
     return card;
   }
 
   // ============ AI 配置 ============
   private buildAISection(containerEl: HTMLElement): void {
-    const card = this.card(
-      containerEl,
-      "AI 模型",
-      "选择厂商、模型、API Key 与调用参数，然后测试连接。"
-    );
+    const card = this.card(containerEl, "aiCardTitle", "aiCardSub");
     const ai = this.plugin.settings.ai;
     const info = PROVIDERS[ai.provider];
+    const note = this.locale === "en" ? info.noteEn : info.note;
 
     // 厂商选择
     new Setting(card)
-      .setName("厂商")
-      .setDesc("选择 AI 服务商；OpenAI 兼容类厂商（含国内厂商与本地 Ollama）共用同一套接口。")
+      .setName(this.tr("providerName"))
+      .setDesc(this.tr("providerDesc"))
       .addDropdown((d) => {
         Object.values(PROVIDERS).forEach((p) => d.addOption(p.id, p.label));
         d.setValue(ai.provider).onChange(async (v) => {
@@ -118,7 +143,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
     // 厂商说明 + 获取 Key 链接（提示框样式）
     const noteEl = card.createEl("p", {
       cls: "setting-item-description ai-tagger-provider-note",
-      text: info.note,
+      text: note,
     });
     if (info.apiKeyUrl) {
       noteEl.createEl("br");
@@ -131,32 +156,35 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     // API Key
     new Setting(card)
-      .setName("API Key")
+      .setName(this.tr("apiKeyName"))
       .setDesc(
-        info.requiresKey ? "鉴权令牌，仅保存在本地。" : "该厂商（本地模型）无需 Key。"
+        info.requiresKey ? this.tr("apiKeyDescReq") : this.tr("apiKeyDescNoKey")
       )
-      .addText((t) => {
-        t.setPlaceholder(info.requiresKey ? "sk-... / 你的密钥" : "（本地模型无需）")
+      .addText((t2) => {
+        t2
+          .setPlaceholder(
+            info.requiresKey ? this.tr("apiKeyPhReq") : this.tr("apiKeyPhNoKey")
+          )
           .setValue(ai.apiKey)
           .onChange(async (v) => {
             ai.apiKey = v.trim();
             await this.plugin.saveSettings();
           });
-        t.inputEl.type = "password";
+        t2.inputEl.type = "password";
       })
       .setDisabled(!info.requiresKey);
 
     // Base URL
     new Setting(card)
-      .setName("Base URL")
+      .setName(this.tr("baseUrlName"))
       .setDesc(
         info.sdk === "openai-compatible"
-          ? "OpenAI 兼容接口地址；已自动填入厂商默认，可改（如 coding 套餐需改路径）。"
-          : "anthropic / google 一般留空走官方；如需代理可填。"
+          ? this.tr("baseUrlDescOpenai")
+          : this.tr("baseUrlDescOther")
       )
-      .addText((t) =>
-        t
-          .setPlaceholder(info.defaultBaseUrl ?? "（留空走官方）")
+      .addText((t2) =>
+        t2
+          .setPlaceholder(this.tr("baseUrlPh"))
           .setValue(ai.baseUrl)
           .onChange(async (v) => {
             ai.baseUrl = v.trim();
@@ -168,13 +196,13 @@ export class AITaggerSettingTab extends PluginSettingTab {
     const builtin = modelsForProvider(ai.provider);
     const isCustom = !builtin.some((m) => m.id === ai.model);
     new Setting(card)
-      .setName("模型")
-      .setDesc("从内置清单选择，或选「自定义模型…」手动输入（如你的私有/微调模型）。")
+      .setName(this.tr("modelName"))
+      .setDesc(this.tr("modelDesc"))
       .addDropdown((d) => {
         builtin.forEach((m) =>
           d.addOption(m.id, m.label + (m.description ? `（${m.description}）` : ""))
         );
-        d.addOption(CUSTOM_MODEL_ID, "自定义模型…");
+        d.addOption(CUSTOM_MODEL_ID, this.tr("customModelLabel"));
         d.setValue(isCustom ? CUSTOM_MODEL_ID : ai.model).onChange(
           async (v) => {
             if (v === CUSTOM_MODEL_ID) {
@@ -191,10 +219,10 @@ export class AITaggerSettingTab extends PluginSettingTab {
     // 自定义模型名输入
     if (isCustom) {
       new Setting(card)
-        .setName("自定义模型名")
-        .setDesc("填写传给 API 的模型标识，例如 glm-5.2、my-finetune-01。")
-        .addText((t) =>
-          t
+        .setName(this.tr("customModelName"))
+        .setDesc(this.tr("customModelDesc"))
+        .addText((t2) =>
+          t2
             .setPlaceholder("glm-5.2")
             .setValue(ai.model)
             .onChange(async (v) => {
@@ -206,10 +234,10 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     // 参数
     new Setting(card)
-      .setName("温度 (temperature)")
-      .setDesc("0 更确定，1 更发散。标注任务建议 0.2–0.4。")
-      .addSlider((t) =>
-        t
+      .setName(this.tr("tempName"))
+      .setDesc(this.tr("tempDesc"))
+      .addSlider((t2) =>
+        t2
           .setLimits(0, 1, 0.05)
           .setValue(ai.temperature)
           .setDynamicTooltip()
@@ -220,10 +248,10 @@ export class AITaggerSettingTab extends PluginSettingTab {
       );
 
     new Setting(card)
-      .setName("核采样 (top_p)")
-      .setDesc("0–1，与温度配合控制多样性；一般 0.9–1。")
-      .addSlider((t) =>
-        t
+      .setName(this.tr("topPName"))
+      .setDesc(this.tr("topPDesc"))
+      .addSlider((t2) =>
+        t2
           .setLimits(0, 1, 0.05)
           .setValue(ai.topP)
           .setDynamicTooltip()
@@ -234,24 +262,24 @@ export class AITaggerSettingTab extends PluginSettingTab {
       );
 
     new Setting(card)
-      .setName("最大输出 token")
-      .setDesc("单次返回上限，影响可写字段数量与长度。")
-      .addText((t) =>
-        t
-          .setPlaceholder("800")
+      .setName(this.tr("maxTokensName"))
+      .setDesc(this.tr("maxTokensDesc"))
+      .addText((t2) =>
+        t2
+          .setPlaceholder("100")
           .setValue(String(ai.maxTokens))
           .onChange(async (v) => {
             const n = parseInt(v, 10);
-            ai.maxTokens = isNaN(n) ? 800 : n;
+            ai.maxTokens = isNaN(n) ? 100 : n;
             await this.plugin.saveSettings();
           })
       );
 
     new Setting(card)
-      .setName("请求超时（毫秒）")
-      .setDesc("超时未响应则放弃，避免卡死。")
-      .addText((t) =>
-        t
+      .setName(this.tr("timeoutName"))
+      .setDesc(this.tr("timeoutDesc"))
+      .addText((t2) =>
+        t2
           .setPlaceholder("30000")
           .setValue(String(ai.requestTimeout))
           .onChange(async (v) => {
@@ -264,7 +292,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
     // 重置参数（仅重置可调节项：温度 / top_p / 最大输出 / 超时；不动厂商、Key、模型）
     const paramResetRow = card.createDiv({ cls: "ai-tagger-row-end" });
     const resetParamsBtn = paramResetRow.createEl("button", {
-      text: "重置参数",
+      text: this.tr("resetParams"),
       cls: "ai-tagger-ghost-btn",
     });
     resetParamsBtn.addEventListener("click", async () => {
@@ -275,14 +303,14 @@ export class AITaggerSettingTab extends PluginSettingTab {
       ai.requestTimeout = d.requestTimeout;
       await this.plugin.saveSettings();
       this.display();
-      new Notice("AI Tagger：已重置模型参数");
+      new Notice(this.tr("resetParamsNotice"));
     });
 
     new Setting(card)
-      .setName("自定义 system 提示前缀")
-      .setDesc("追加在字段说明前的额外指令，用于约束输出风格/语言等。")
-      .addTextArea((t) =>
-        t.setValue(ai.extraInstruction).onChange(async (v) => {
+      .setName(this.tr("sysPromptName"))
+      .setDesc(this.tr("sysPromptDesc"))
+      .addTextArea((t2) =>
+        t2.setValue(ai.extraInstruction).onChange(async (v) => {
           ai.extraInstruction = v;
           await this.plugin.saveSettings();
         })
@@ -294,7 +322,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
     // 测试连接：整行 CTA
     const testBar = card.createDiv({ cls: "ai-tagger-testbar" });
     const btn = testBar.createEl("button", {
-      text: "测试连接",
+      text: this.tr("testConn"),
       cls: "ai-tagger-test-btn",
     });
     const status = testBar.createEl("span", {
@@ -303,51 +331,32 @@ export class AITaggerSettingTab extends PluginSettingTab {
     });
     btn.addEventListener("click", async () => {
       btn.setAttribute("disabled", "");
-      btn.textContent = "测试中…";
+      btn.textContent = this.tr("testing");
       status.textContent = "";
       status.className = "ai-tagger-test-status";
       const r = await verifyConnection(this.plugin.settings.ai);
       btn.removeAttribute("disabled");
-      btn.textContent = "测试连接";
+      btn.textContent = this.tr("testConn");
       if (r.ok) {
-        status.textContent = "连接成功 ✓";
+        status.textContent = this.tr("testOk");
         status.className = "ai-tagger-test-status is-ok";
       } else {
-        status.textContent = "连接失败 ✗\n" + r.error;
+        status.textContent = this.tr("testFail") + "\n" + r.error;
         status.className = "ai-tagger-test-status is-err";
-        new Notice("AI Tagger：连接失败 ✗");
+        new Notice(this.tr("testFailNotice"));
       }
     });
   }
 
   // ============ 提取字段 ============
   private buildFieldSection(containerEl: HTMLElement): void {
-    const card = this.card(
-      containerEl,
-      "提取字段",
-      "AI 将按下列字段返回 JSON 并写入笔记 frontmatter。键名即 JSON 键名（如 tags / summary / category）。"
-    );
+    const card = this.card(containerEl, "fieldCardTitle", "fieldCardSub");
 
     const listEl = card.createDiv();
     this.renderFieldList(listEl);
 
-    // 恢复默认字段
-    const resetRow = card.createDiv({ cls: "ai-tagger-row-end" });
-    const resetFieldsBtn = resetRow.createEl("button", {
-      text: "恢复默认字段",
-      cls: "ai-tagger-ghost-btn",
-    });
-    resetFieldsBtn.addEventListener("click", async () => {
-      this.plugin.settings.fields = DEFAULT_SETTINGS.fields.map((f) => ({
-        ...f,
-      }));
-      await this.plugin.saveSettings();
-      this.renderFieldList(listEl);
-      new Notice("AI Tagger：已恢复默认字段");
-    });
-
     const addBtn = card.createEl("button", {
-      text: "+ 添加字段",
+      text: this.tr("addField"),
       cls: "ai-tagger-add-btn",
     });
     addBtn.addEventListener("click", async () => {
@@ -367,70 +376,99 @@ export class AITaggerSettingTab extends PluginSettingTab {
     listEl.empty();
     const fields = this.plugin.settings.fields;
     fields.forEach((field, idx) => {
+      const collapsed = this.collapsedFields.has(field);
       const card = listEl.createDiv({ cls: "ai-tagger-field-card" });
 
-      // 卡片头：字段名 + 类型 + 删除
+      // 卡片头：折叠箭头 + 字段名 + 类型 + 删除
       const head = card.createDiv({ cls: "ai-tagger-field-head" });
+      const toggle = head.createEl("button", {
+        cls: "ai-tagger-field-toggle",
+        text: collapsed ? "▸" : "▾",
+        title: this.tr(collapsed ? "expand" : "collapse"),
+      });
       head.createEl("span", {
         cls: "ai-tagger-field-name",
-        text: field.name ? field.name : "未命名字段",
+        text: field.name ? field.name : this.tr("unnamed"),
       });
       head.createEl("span", { cls: "ai-tagger-field-type", text: field.type });
       const del = head.createEl("button", {
-        text: "删除",
+        text: this.tr("fDelete"),
         cls: "ai-tagger-field-del",
       });
       del.addEventListener("click", async () => {
         fields.splice(idx, 1);
+        this.collapsedFields.delete(field);
         await this.plugin.saveSettings();
         this.renderFieldList(listEl);
       });
 
-      // 控件网格
+      // 控件网格（折叠时隐藏）
       const grid = card.createDiv({ cls: "ai-tagger-field-grid" });
+      if (collapsed) grid.style.display = "none";
+
+      toggle.addEventListener("click", () => {
+        if (this.collapsedFields.has(field)) {
+          this.collapsedFields.delete(field);
+          grid.style.display = "";
+          toggle.textContent = "▾";
+          toggle.title = this.tr("collapse");
+        } else {
+          this.collapsedFields.add(field);
+          grid.style.display = "none";
+          toggle.textContent = "▸";
+          toggle.title = this.tr("expand");
+        }
+      });
 
       new Setting(grid)
-        .setName("启用")
-        .setDesc("关闭则该字段不参与本次提取与写入。")
-        .addToggle((t) =>
-          t.setValue(field.enabled).onChange(async (v) => {
+        .setName(this.tr("fEnabledName"))
+        .setDesc(this.tr("fEnabledDesc"))
+        .addToggle((t2) =>
+          t2.setValue(field.enabled).onChange(async (v) => {
             field.enabled = v;
             await this.plugin.saveSettings();
           })
         );
 
       new Setting(grid)
-        .setName("字段名")
-        .setDesc("frontmatter 键名，亦为返回 JSON 的键名。")
-        .addText((t) =>
-          t
+        .setName(this.tr("fNameName"))
+        .setDesc(this.tr("fNameDesc"))
+        .addText((t2) =>
+          t2
             .setPlaceholder("tags")
             .setValue(field.name)
             .onChange(async (v) => {
               field.name = v.trim();
-              this.renderFieldList(listEl);
+              const nameSpan = head.querySelector(
+                ".ai-tagger-field-name"
+              ) as HTMLElement | null;
+              if (nameSpan)
+                nameSpan.textContent = field.name ? field.name : this.tr("unnamed");
               await this.plugin.saveSettings();
             })
         );
 
       new Setting(grid)
-        .setName("类型")
-        .setDesc("决定写入 frontmatter 的值类型。")
+        .setName(this.tr("fTypeName"))
+        .setDesc(this.tr("fTypeDesc"))
         .addDropdown((d) => {
           const types: FieldType[] = ["string", "array", "number", "boolean"];
           types.forEach((tp) => d.addOption(tp, tp));
           d.setValue(field.type).onChange(async (v) => {
             field.type = v as FieldType;
-            this.renderFieldList(listEl);
+            const typeSpan = head.querySelector(
+              ".ai-tagger-field-type"
+            ) as HTMLElement | null;
+            if (typeSpan) typeSpan.textContent = field.type;
             await this.plugin.saveSettings();
           });
         });
 
       new Setting(grid)
-        .setName("说明")
-        .setDesc("描述该字段的含义与格式要求。")
-        .addTextArea((t) =>
-          t.setValue(field.description).onChange(async (v) => {
+        .setName(this.tr("fDescName"))
+        .setDesc(this.tr("fDescDesc"))
+        .addTextArea((t2) =>
+          t2.setValue(field.description).onChange(async (v) => {
             field.description = v;
             await this.plugin.saveSettings();
           })
@@ -441,12 +479,10 @@ export class AITaggerSettingTab extends PluginSettingTab {
         });
 
       new Setting(grid)
-        .setName("允许取值")
-        .setDesc(
-          "可选。限定该字段的取值范围，如「技术, 读书, 生活」或与词表一致。AI 仅可从中选择，数组字段回落时也会过滤越界值。"
-        )
-        .addTextArea((t) =>
-          t.setValue(field.constraints).onChange(async (v) => {
+        .setName(this.tr("fConstraintsName"))
+        .setDesc(this.tr("fConstraintsDesc"))
+        .addTextArea((t2) =>
+          t2.setValue(field.constraints).onChange(async (v) => {
             field.constraints = v;
             await this.plugin.saveSettings();
           })
@@ -460,33 +496,29 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
   // ============ 生效范围 ============
   private buildScopeSection(containerEl: HTMLElement): void {
-    const card = this.card(
-      containerEl,
-      "生效范围",
-      "相对库根的路径，不含前置斜杠。留空「生效文件夹」表示全库生效；排除优先于包含。"
-    );
+    const card = this.card(containerEl, "scopeCardTitle", "scopeCardSub");
 
     this.renderStringList(
       card,
-      "生效文件夹",
-      "如 Inbox / Articles/Read",
+      "enabledFoldersName",
+      "enabledFoldersDesc",
+      "enabledFoldersPh",
       this.plugin.settings.enabledFolders
     );
     this.renderStringList(
       card,
-      "排除文件夹",
-      "如 Templates / _private",
+      "excludedFoldersName",
+      "excludedFoldersDesc",
+      "excludedFoldersPh",
       this.plugin.settings.excludedFolders
     );
 
     const s = this.plugin.settings;
     new Setting(card)
-      .setName("包含子文件夹（递归）")
-      .setDesc(
-        "开启：生效文件夹下所有层级的子文件夹都生效。关闭：仅该文件夹内的直接文件生效，子文件夹中的文件不处理。"
-      )
-      .addToggle((t) =>
-        t.setValue(s.recursiveScope).onChange(async (v) => {
+      .setName(this.tr("recursiveName"))
+      .setDesc(this.tr("recursiveDesc"))
+      .addToggle((t2) =>
+        t2.setValue(s.recursiveScope).onChange(async (v) => {
           s.recursiveScope = v;
           await this.plugin.saveSettings();
         })
@@ -495,13 +527,14 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
   private renderStringList(
     containerEl: HTMLElement,
-    title: string,
-    placeholder: string,
+    nameKey: string,
+    descKey: string,
+    phKey: string,
     arr: string[]
   ): void {
     new Setting(containerEl)
-      .setName(title)
-      .setDesc("输入时下方实时提示知识库中匹配的目录；方向键选择、回车或点击加入，也可手写任意路径。");
+      .setName(this.tr(nameKey))
+      .setDesc(this.tr(descKey));
 
     const listEl = containerEl.createDiv({ cls: "ai-tagger-list" });
     const rerender = () => this.renderStringListItems(listEl, arr, rerender);
@@ -512,7 +545,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
     const inputWrap = row.createDiv({ cls: "ai-tagger-input-wrap" });
     const input = inputWrap.createEl("input", {
       type: "text",
-      placeholder,
+      placeholder: this.tr(phKey),
     });
     const suggest = inputWrap.createEl("div", {
       cls: "ai-tagger-suggest",
@@ -617,7 +650,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
       }
     });
 
-    const addBtn = row.createEl("button", { text: "添加" });
+    const addBtn = row.createEl("button", { text: this.tr("addBtn") });
     addBtn.addEventListener("click", () => {
       const v = input.value.trim();
       if (v) addPath(v);
@@ -696,38 +729,34 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
   // ============ 触发与行为 ============
   private buildBehaviorSection(containerEl: HTMLElement): void {
-    const card = this.card(
-      containerEl,
-      "触发与行为",
-      "控制何时调用 AI、写入策略与性能参数。"
-    );
+    const card = this.card(containerEl, "behaviorCardTitle", "behaviorCardSub");
     const s = this.plugin.settings;
 
     new Setting(card)
-      .setName("新建文件自动打标")
-      .setDesc("新建 .md 文件或网页剪藏生成文件时触发（防抖后）。")
-      .addToggle((t) =>
-        t.setValue(s.autoOnCreate).onChange(async (v) => {
+      .setName(this.tr("autoCreateName"))
+      .setDesc(this.tr("autoCreateDesc"))
+      .addToggle((t2) =>
+        t2.setValue(s.autoOnCreate).onChange(async (v) => {
           s.autoOnCreate = v;
           await this.plugin.saveSettings();
         })
       );
 
     new Setting(card)
-      .setName("内容新增自动打标")
-      .setDesc("已有文件内容变化后触发（默认关闭，避免频繁调用产生费用）。")
-      .addToggle((t) =>
-        t.setValue(s.autoOnModify).onChange(async (v) => {
+      .setName(this.tr("autoModifyName"))
+      .setDesc(this.tr("autoModifyDesc"))
+      .addToggle((t2) =>
+        t2.setValue(s.autoOnModify).onChange(async (v) => {
           s.autoOnModify = v;
           await this.plugin.saveSettings();
         })
       );
 
     new Setting(card)
-      .setName("防抖时间（毫秒）")
-      .setDesc("停止输入/写入后等待多久再调用 AI。")
-      .addText((t) =>
-        t
+      .setName(this.tr("debounceName"))
+      .setDesc(this.tr("debounceDesc"))
+      .addText((t2) =>
+        t2
           .setPlaceholder("3000")
           .setValue(String(s.debounceMs))
           .onChange(async (v) => {
@@ -738,15 +767,13 @@ export class AITaggerSettingTab extends PluginSettingTab {
       );
 
     new Setting(card)
-      .setName("已有标签处理策略")
-      .setDesc(
-        "保护（默认）：笔记已有标签则整篇跳过，绝不改动你喜欢的标签；合并：保留已有值，AI 仅补充新标签/字段；覆盖：AI 全权重写所有目标字段。"
-      )
+      .setName(this.tr("tagPolicyName"))
+      .setDesc(this.tr("tagPolicyDesc"))
       .addDropdown((dd) =>
         dd
-          .addOption("skip", "保护已有（有标签则跳过）")
-          .addOption("merge", "合并（保留原有 + AI 补充）")
-          .addOption("overwrite", "覆盖（AI 全权）")
+          .addOption("skip", this.tr("tagPolicySkip"))
+          .addOption("merge", this.tr("tagPolicyMerge"))
+          .addOption("overwrite", this.tr("tagPolicyOverwrite"))
           .setValue(s.tagPolicy)
           .onChange(async (v) => {
             s.tagPolicy = v as PluginSettings["tagPolicy"];
@@ -755,27 +782,25 @@ export class AITaggerSettingTab extends PluginSettingTab {
       );
 
     new Setting(card)
-      .setName("送入 AI 的最大字符数")
-      .setDesc("截断正文以控制 token 消耗与费用。")
-      .addText((t) =>
-        t
-          .setPlaceholder("8000")
+      .setName(this.tr("maxContentName"))
+      .setDesc(this.tr("maxContentDesc"))
+      .addText((t2) =>
+        t2
+          .setPlaceholder("1000")
           .setValue(String(s.maxContentChars))
           .onChange(async (v) => {
             const n = parseInt(v, 10);
-            s.maxContentChars = isNaN(n) ? 8000 : n;
+            s.maxContentChars = isNaN(n) ? 1000 : n;
             await this.plugin.saveSettings();
           })
       );
 
     new Setting(card)
-      .setName("触发打标的最小正文字数")
-      .setDesc(
-        "正文不足该字数视为「内容不足」：新建空文件先挂起，待你写入达标后自动触发；不对此类文件发起 AI 调用，避免浪费。"
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder("30")
+      .setName(this.tr("minContentName"))
+      .setDesc(this.tr("minContentDesc"))
+      .addText((t2) =>
+        t2
+          .setPlaceholder("300")
           .setValue(String(s.minContentChars))
           .onChange(async (v) => {
             const n = parseInt(v, 10);
@@ -785,11 +810,11 @@ export class AITaggerSettingTab extends PluginSettingTab {
       );
 
     new Setting(card)
-      .setName("批量并发数")
-      .setDesc("批量处理时的最大并发请求数。")
-      .addText((t) =>
-        t
-          .setPlaceholder("3")
+      .setName(this.tr("concurrencyName"))
+      .setDesc(this.tr("concurrencyDesc"))
+      .addText((t2) =>
+        t2
+          .setPlaceholder("5")
           .setValue(String(s.concurrency))
           .onChange(async (v) => {
             const n = parseInt(v, 10);
@@ -799,40 +824,51 @@ export class AITaggerSettingTab extends PluginSettingTab {
       );
   }
 
-  // ============ 恢复全部默认配置 ============
+  // ============ 恢复配置（两个恢复：字段 + 全部） ============
   private buildResetSection(containerEl: HTMLElement): void {
-    const card = this.card(
-      containerEl,
-      "恢复配置",
-      "把本插件的所有设置恢复为出厂默认值（含 AI 配置、字段、范围与行为）。此操作不可撤销。"
-    );
-    const row = card.createDiv({ cls: "ai-tagger-row-end" });
-    const btn = row.createEl("button", {
-      text: "恢复全部默认配置",
+    const card = this.card(containerEl, "resetCardTitle", "resetCardSub");
+    const row = card.createDiv({ cls: "ai-tagger-reset-row" });
+
+    // 1) 恢复默认字段
+    const resetFieldsBtn = row.createEl("button", {
+      text: this.tr("restoreFields"),
+      cls: "ai-tagger-ghost-btn",
+    });
+    resetFieldsBtn.addEventListener("click", async () => {
+      this.plugin.settings.fields = DEFAULT_SETTINGS.fields.map((f) => ({
+        ...f,
+      }));
+      await this.plugin.saveSettings();
+      this.display();
+      new Notice(this.tr("restoreFieldsNotice"));
+    });
+
+    // 2) 恢复全部默认配置（二次确认防误清）
+    const resetAllBtn = row.createEl("button", {
+      text: this.tr("restoreAll"),
       cls: "ai-tagger-danger-btn",
     });
     let armed = false;
     let timer: number | undefined;
-    btn.addEventListener("click", async () => {
+    resetAllBtn.addEventListener("click", async () => {
       if (!armed) {
         armed = true;
-        btn.textContent = "确认恢复？再次点击将清空当前配置";
-        btn.addClass("is-armed");
+        resetAllBtn.textContent = this.tr("confirmReset");
+        resetAllBtn.addClass("is-armed");
         if (timer) window.clearTimeout(timer);
         timer = window.setTimeout(() => {
           armed = false;
-          btn.textContent = "恢复全部默认配置";
-          btn.removeClass("is-armed");
+          resetAllBtn.textContent = this.tr("restoreAll");
+          resetAllBtn.removeClass("is-armed");
         }, 4000);
         return;
       }
       if (timer) window.clearTimeout(timer);
-      // 深拷贝默认配置，避免引用同一对象
       const fresh: PluginSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
       this.plugin.settings = fresh;
       await this.plugin.saveSettings();
       this.display();
-      new Notice("AI Tagger：已恢复全部默认配置");
+      new Notice(this.tr("restoreAllNotice"));
     });
   }
 }

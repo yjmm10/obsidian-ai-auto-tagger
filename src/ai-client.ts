@@ -231,8 +231,9 @@ export async function verifyConnection(
   try {
     const result = await generateText({
       model,
-      prompt: "请只回复两个字：pong",
-      maxOutputTokens: 32,
+      prompt: "ping",
+      system: "You are a helpful assistant. Reply with a single word: pong.",
+      maxOutputTokens: 256,
       temperature: 0,
       topP: settings.topP,
       maxRetries: 0,
@@ -243,6 +244,15 @@ export async function verifyConnection(
     const raw = result.response?.body
       ? JSON.stringify(result.response.body).slice(0, 800)
       : "(SDK 未提供原始响应)";
+    const finishReason = (result.response?.headers as any)?.["x-finish-reason"]
+      || (result.response?.body as any)?.choices?.[0]?.finish_reason
+      || "";
+    if (finishReason === "length") {
+      return {
+        ok: false,
+        error: `模型因 token 不足被截断（finish_reason=length）。原始响应片段：${raw}`,
+      };
+    }
     return {
       ok: false,
       error: `模型返回为空。原始响应片段：${raw}`,

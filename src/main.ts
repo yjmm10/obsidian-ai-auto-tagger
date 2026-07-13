@@ -2,12 +2,16 @@ import { App, Modal, Notice, Plugin, TFile } from "obsidian";
 import { DEFAULT_SETTINGS, PluginSettings } from "./types";
 import { AITaggerSettingTab } from "./settings";
 import { isInScope, tagFile } from "./tagger";
+import { splitFrontmatter } from "./frontmatter";
+import { isContentSufficient } from "./text";
 
 export default class AITaggerPlugin extends Plugin {
   settings: PluginSettings;
   private debounceTimers: Map<string, number> = new Map();
   /** 程序写回期间忽略 modify 事件，避免自触发循环 */
   private writingPaths: Set<string> = new Set();
+  /** 内容不足而挂起、等待后续写入达标的文件（新建空文件场景） */
+  private pendingCreate: Set<string> = new Set();
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -22,12 +26,7 @@ export default class AITaggerPlugin extends Plugin {
           new Notice("AI Tagger: 当前没有打开的 Markdown 文件");
           return;
         }
-        this.writingPaths.add(file.path);
-        try {
-          await tagFile(this.app, file, this.settings, true);
-        } finally {
-          this.writingPaths.delete(file.path);
-        }
+        await this.runTag(file, "manual");
       },
     });
 
@@ -63,6 +62,26 @@ export default class AITaggerPlugin extends Plugin {
         })
       );
     }
+
+    // 待定文件监听：新建空文件内容不足时挂起，此处在内容写够后自动触发。
+    // 该监听始终注册，与 autoOnModify 开关无关，保证「先建空文件、后补内容」也能自动打标。
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (this.writingPaths.has(file.path)) return;
+        if (!(file instanceof TFile) || file.extension !== "md") return;
+        if (this.pendingCreate.has(file.path)) {
+          this.scheduleAuto(file);
+        }
+      })
+    );
+
+    // 文件删除时清理挂起状态，避免内存泄漏
+    this.registerEvent(
+      this.app.vault.on("delete", (file) => {
+        this.pendingCreate.delete(file.path);
+        this.debounceTimers.delete(file.path);
+      })
+    );
   }
 
   onunload(): void {
@@ -80,21 +99,59 @@ export default class AITaggerPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
-  /** 防抖调度自动打标（用于 create / modify 触发） */
+  /**
+   * 防抖调度自动打标（用于 create / modify 触发）。
+   * 到点后由 runTag 执行「内容达标」门控：不足则挂起，不发起 AI 调用。
+   */
   private scheduleAuto(file: TFile): void {
     const prev = this.debounceTimers.get(file.path);
     if (prev) window.clearTimeout(prev);
     const timer = window.setTimeout(async () => {
       this.debounceTimers.delete(file.path);
-      if (!isInScope(file, this.settings)) return;
-      this.writingPaths.add(file.path);
-      try {
-        await tagFile(this.app, file, this.settings, false);
-      } finally {
-        this.writingPaths.delete(file.path);
-      }
+      await this.runTag(file, "auto");
     }, this.settings.debounceMs);
     this.debounceTimers.set(file.path, timer);
+  }
+
+  /**
+   * 执行单次打标，带「内容达标」门控。
+   * @param mode
+   *  - "auto"：自动触发。内容不足 → 挂起等待后续写入（不调用 AI）。
+   *  - "manual"：手动命令。内容不足 → 提示并跳过。
+   *  - "batch"：批量。内容不足 → 静默跳过。
+   */
+  private async runTag(
+    file: TFile,
+    mode: "auto" | "manual" | "batch"
+  ): Promise<boolean> {
+    if (!isInScope(file, this.settings)) {
+      if (mode === "manual")
+        new Notice(`AI Tagger: ${file.path} 不在生效范围内`);
+      return false;
+    }
+
+    const raw = await this.app.vault.read(file);
+    if (!isContentSufficient(raw, this.settings.minContentChars)) {
+      if (mode === "auto") {
+        // 内容不足：挂起，等后续 modify 写够再触发（不浪费 AI 调用）
+        this.pendingCreate.add(file.path);
+      } else if (mode === "manual") {
+        const len = (splitFrontmatter(raw).body.trim().length);
+        new Notice(
+          `AI Tagger: 内容过少（${len} 字），未达 ${this.settings.minContentChars} 字阈值，已跳过`
+        );
+      }
+      // batch 模式静默跳过
+      return false;
+    }
+
+    this.pendingCreate.delete(file.path);
+    this.writingPaths.add(file.path);
+    try {
+      return await tagFile(this.app, file, this.settings, mode !== "auto");
+    } finally {
+      this.writingPaths.delete(file.path);
+    }
   }
 
   private batchByFolder(): void {
@@ -131,7 +188,7 @@ export default class AITaggerPlugin extends Plugin {
     await this.runPool(files, async (file) => {
       this.writingPaths.add(file.path);
       try {
-        const r = await tagFile(this.app, file, this.settings, false);
+        const r = await this.runTag(file, "batch");
         if (r) ok++;
         else fail++;
       } catch (e) {

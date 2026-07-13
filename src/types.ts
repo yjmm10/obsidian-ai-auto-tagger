@@ -26,6 +26,9 @@ export interface FieldMapping {
   type: FieldType;
   /** 给 AI 的字段说明，例如「3-6 个中文标签，单个标签不含空格」 */
   description: string;
+  /** 允许取值限制（自由文本，如「技术, 读书, 生活」）。
+   *  非空时：① 提示词约束 AI 仅从范围内选择；② 数组字段回落时过滤越界值。 */
+  constraints: string;
 }
 
 export interface PluginSettings {
@@ -47,6 +50,9 @@ export interface PluginSettings {
   skipIfHasTags: boolean;
   /** 送入 AI 的正文最大字符数 */
   maxContentChars: number;
+  /** 触发自动打标所需的最小正文长度（字符）。低于此值视为「内容不足」，
+   *  新建空文件会挂起，待后续写入达标后自动触发；避免对空文件浪费 AI 调用。 */
+  minContentChars: number;
   /** 批量处理并发数 */
   concurrency: number;
 }
@@ -59,10 +65,10 @@ export const DEFAULT_SETTINGS: PluginSettings = {
     model: "gpt-4o-mini",
     temperature: 0.3,
     topP: 1,
-    maxTokens: 800,
+    maxTokens: 100,
     requestTimeout: 30000,
     extraInstruction:
-      "你是一名中文笔记标注助手，输出必须严谨符合给定字段的类型要求。",
+      "你是一名严谨的中文笔记元数据标注助手，输出必须严格符合给定字段的类型与取值要求。",
   },
   fields: [
     {
@@ -70,19 +76,22 @@ export const DEFAULT_SETTINGS: PluginSettings = {
       name: "tags",
       type: "array",
       description:
-        "3-6 个简洁的中文标签，描述笔记主题；单个标签不含空格，可用连字符。",
+        "3-6 个简洁的中文标签，描述笔记主题；单个标签不含空格，可用连字符；如需限定词表请在「允许取值」中填写。",
+      constraints: "",
     },
     {
       enabled: true,
       name: "summary",
       type: "string",
       description: "一句话中文摘要，不超过 40 字。",
+      constraints: "",
     },
     {
       enabled: true,
       name: "category",
       type: "string",
-      description: "笔记所属分类或领域，单个词，如「技术」「读书」「生活」。",
+      description: "笔记所属分类或领域，单个词。",
+      constraints: "",
     },
   ],
   enabledFolders: [],
@@ -92,6 +101,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   debounceMs: 3000,
   overwrite: false,
   skipIfHasTags: true,
-  maxContentChars: 8000,
-  concurrency: 3,
+  maxContentChars: 1000,
+  minContentChars: 300,
+  concurrency: 5,
 };

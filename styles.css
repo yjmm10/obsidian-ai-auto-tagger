@@ -1,28 +1,377 @@
+/* ============================================================
+   AI Auto Tagger — 设置面板样式
+   设计原则：沿用 Obsidian 原生 CSS 变量，分区卡片化，
+   间距统一、强调层级清晰，适配浅色/深色主题。
+   ============================================================ */
+
 .ai-tagger-notice {
   font-size: var(--font-ui-small);
 }
 
-.ai-tagger-field-row {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: 8px 10px;
-  margin-bottom: 8px;
+/* ---------- 吸顶头部（标题 + 标签导航 + 说明） ---------- */
+.ai-tagger-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  /* 遮挡滚动经过的内容，避免透出 */
+  background: var(--background-primary);
+  padding: 2px 2px 10px;
+  margin: 0 -2px 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-tagger-header h2 {
+  margin: 8px 2px 10px;
+}
+
+/* ---------- 顶部分段标签导航 ---------- */
+.ai-tagger-tab-nav {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  margin: 0 0 2px;
   background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
 }
 
-.ai-tagger-field-row .setting-item {
+.ai-tagger-tab-btn {
+  flex: 1;
+  appearance: none;
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 9px 14px;
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  box-shadow: none;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.ai-tagger-tab-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.ai-tagger-tab-btn.is-active {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+}
+
+.ai-tagger-tab-btn.is-active:hover {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+}
+
+.ai-tagger-tab-desc {
+  margin: 10px 2px 14px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.ai-tagger-tab-content {
+  margin-top: 4px;
+}
+
+/* ---------- 分区卡片 ---------- */
+.ai-tagger-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  padding: 4px 16px 14px;
+  margin-bottom: 18px;
+}
+
+.ai-tagger-card-head {
+  padding: 14px 0 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-tagger-card-title {
+  font-size: var(--font-ui-large);
+  font-weight: 700;
+  color: var(--text-normal);
+  letter-spacing: 0.2px;
+}
+
+.ai-tagger-card-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.ai-tagger-card .setting-item {
   border-top: none;
-  padding-top: 4px;
-  padding-bottom: 4px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
-.ai-tagger-list-item {
+.ai-tagger-card .setting-item:first-child {
+  border-top: none;
+}
+
+/* ---------- 厂商说明提示框 ---------- */
+.ai-tagger-provider-note {
+  margin: 8px 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.ai-tagger-provider-note a {
+  color: var(--text-accent);
+  font-weight: 600;
+}
+
+/* ---------- 测试连接整行 CTA ---------- */
+.ai-tagger-testbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--background-modifier-border);
+}
+
+.ai-tagger-test-btn {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px 22px;
+  font-size: var(--font-ui-medium);
+  font-weight: 700;
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border-radius: var(--radius-s);
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.ai-tagger-test-btn:hover {
+  filter: brightness(1.08);
+}
+
+.ai-tagger-test-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.ai-tagger-test-status {
+  font-size: var(--font-ui-small);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.ai-tagger-test-status.is-ok {
+  color: var(--text-success);
+}
+
+.ai-tagger-test-status.is-err {
+  color: var(--text-error);
+  white-space: pre-wrap;
+}
+
+/* ---------- 字段映射卡片 ---------- */
+.ai-tagger-field-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  padding: 0 14px 10px;
+  margin-bottom: 12px;
+}
+
+.ai-tagger-field-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
   margin-bottom: 6px;
 }
 
-.ai-tagger-list-item input {
+.ai-tagger-field-name {
+  font-weight: 700;
+  font-size: var(--font-ui-medium);
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+
+.ai-tagger-field-type {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-accent);
+  background: var(--background-modifier-hover);
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  text-transform: lowercase;
+}
+
+.ai-tagger-field-del {
+  margin-left: auto;
+  appearance: none;
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  padding: 4px 12px;
+  font-size: var(--font-ui-small);
+  border-radius: var(--radius-s);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.ai-tagger-field-del:hover {
+  color: var(--text-error);
+  border-color: var(--text-error);
+}
+
+.ai-tagger-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 18px;
+}
+
+.ai-tagger-field-grid .setting-item {
+  border-top: none;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.ai-tagger-span2 {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 520px) {
+  .ai-tagger-field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- 添加字段按钮 ---------- */
+.ai-tagger-add-btn {
+  appearance: none;
+  cursor: pointer;
+  width: 100%;
+  border: 1px dashed var(--interactive-accent);
+  background: transparent;
+  color: var(--text-accent);
+  font-weight: 600;
+  padding: 10px;
+  border-radius: var(--radius-m);
+  margin-bottom: 6px;
+  transition: background 0.15s ease;
+}
+
+.ai-tagger-add-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* ---------- 字符串列表 chip ---------- */
+.ai-tagger-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 12px;
+}
+
+.ai-tagger-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 12px;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+}
+
+.ai-tagger-chip-del {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: var(--radius-s);
+}
+
+.ai-tagger-chip-del:hover {
+  color: var(--text-error);
+  background: var(--background-secondary-alt);
+}
+
+.ai-tagger-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ai-tagger-add-row input {
   flex: 1;
+}
+
+/* ---------- 输入联想下拉 ---------- */
+.ai-tagger-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+}
+
+.ai-tagger-input-wrap input {
+  width: 100%;
+}
+
+.ai-tagger-suggest {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.ai-tagger-suggest-item {
+  display: block;
+  padding: 6px 10px;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-tagger-suggest-item:hover,
+.ai-tagger-suggest-item.is-active {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.ai-tagger-suggest-item.is-active {
+  box-shadow: inset 2px 0 0 var(--interactive-accent);
+}
+
+.ai-tagger-mark {
+  color: var(--interactive-accent);
+  font-weight: 600;
 }

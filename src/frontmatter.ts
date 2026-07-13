@@ -1,11 +1,10 @@
 import { parseYaml, stringifyYaml } from "obsidian";
+import { FRONTMATTER_RE, stripFrontmatter } from "./text";
 
 export interface ParsedNote {
   frontmatter: Record<string, unknown> | null;
   body: string;
 }
-
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 /** 将笔记拆分为 frontmatter 对象与正文。无 frontmatter 时返回 null。 */
 export function splitFrontmatter(content: string): ParsedNote {
@@ -24,9 +23,13 @@ export function splitFrontmatter(content: string): ParsedNote {
     console.warn("AI Tagger: 解析 frontmatter 失败，已忽略", e);
     return { frontmatter: null, body: content };
   }
-  const body = content.slice(match[0].length);
-  return { frontmatter: fm, body };
+  const stripped = stripFrontmatter(content);
+  return { frontmatter: fm, body: stripped.body };
 }
+
+// 兼容导出：门控逻辑统一在 text.ts（无 obsidian 依赖，可单测）
+export { isContentSufficient } from "./text";
+
 
 /** 将 frontmatter 对象与正文重新组合成完整笔记文本。 */
 export function compileNote(

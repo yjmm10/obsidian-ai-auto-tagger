@@ -22,6 +22,7 @@ import {
   verifyConnection,
 } from "../src/ai-client";
 import type { AISettings, FieldMapping } from "../src/types";
+import { isContentSufficient } from "../src/text";
 
 let passed = 0;
 let failed = 0;
@@ -231,6 +232,17 @@ const JSON_CONTENT = JSON.stringify({
   const rp = buildRequestParams(cfg, tagFields, "标题X", "内容Y");
   check("buildRequestParams 含 system 与 prompt", !!rp.system && !!rp.prompt);
   check("buildRequestParams schema 为 zod", typeof (rp.schema as any)?.safeParse === "function");
+
+  // ---------- 5. 内容达标门控（isContentSufficient）----------
+  console.log("\n[5] 内容达标门控 isContentSufficient");
+  check("空文件不达标", isContentSufficient("", 30) === false);
+  check("仅空白不达标", isContentSufficient("   \n\n  ", 30) === false);
+  check("frontmatter 不计入字数", isContentSufficient("---\ntags: [a,b]\n---\n", 10) === false);
+  check("正文达标", isContentSufficient("今天学习了一个新的算法，收获很多。", 10) === true);
+  check("带 frontmatter 的正文达标", isContentSufficient("---\ntags: [a]\n---\n这是一段足够长的正文内容用于测试门控逻辑。", 10) === true);
+  check("阈值=0 始终达标", isContentSufficient("", 0) === true);
+  check("刚好达阈值", isContentSufficient("一二三四五六七八九十", 10) === true);
+  check("差一个字不达标", isContentSufficient("一二三四五六七八九", 10) === false);
 
   console.log(`\n结果：通过 ${passed}，失败 ${failed}`);
   if (failed > 0) process.exit(1);

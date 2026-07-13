@@ -1,17 +1,15 @@
-/** 支持的 AI 厂商 / 接口类型。统一经 Vercel AI SDK 调用，兼容 OpenAI 协议。 */
-export type AIProvider =
-  | "openai-compatible"
-  | "anthropic"
-  | "google";
+import type { ProviderId } from "./models";
 
 export interface AISettings {
-  /** 厂商 / 接口类型；openai-compatible 可覆盖 OpenAI / DeepSeek / 通义 / 智谱 / 豆包 / 本地 Ollama 等 */
-  provider: AIProvider;
-  /** OpenAI 兼容的 base URL（openai-compatible 模式必填）。anthropic / google 模式可留空或用代理地址 */
+  /** 厂商（OpenAI / Anthropic / Google / 智谱 / DeepSeek / Ollama …），见 src/models.ts */
+  provider: ProviderId;
+  /** Base URL。留空时自动使用厂商默认值（Ollama 为本地地址，anthropic/google 留空走官方） */
   baseUrl: string;
   apiKey: string;
   model: string;
   temperature: number;
+  /** 核采样概率（0-1），与 temperature 配合控制多样性 */
+  topP: number;
   maxTokens: number;
   /** 单次请求超时（毫秒） */
   requestTimeout: number;
@@ -55,11 +53,12 @@ export interface PluginSettings {
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   ai: {
-    provider: "openai-compatible",
+    provider: "openai",
     baseUrl: "https://api.openai.com/v1",
     apiKey: "",
     model: "gpt-4o-mini",
     temperature: 0.3,
+    topP: 1,
     maxTokens: 800,
     requestTimeout: 30000,
     extraInstruction:

@@ -17,6 +17,7 @@ const zh: Record<string, string> = {
   tabAboutLabel: "👤 关于",
   tabAboutDesc: "作者介绍、版本信息以及一杯咖啡的支持方式。",
   langName: "语言",
+  titleSub: "智能提取字段 · 自动整理你的笔记 🤖",
 
   // ---------- AI 配置 ----------
   aiCardTitle: "🤖 AI 模型",
@@ -94,6 +95,14 @@ const zh: Record<string, string> = {
   fDelete: "删除",
   collapse: "折叠/展开该字段",
   expand: "展开该字段",
+  fNoDesc: "（未填写字段说明）",
+  fTagSourceName: "🏷️ 标签来源",
+  fTagSourceDesc:
+    "该字段「使用预定标签 / 混合」模式可取用的标签来源：标签文件、自动检索库全部笔记的 tags，或二者并集。",
+  fTagFilePathName: "📄 标签文件路径",
+  fTagFilePathDesc: "相对库根的路径，如 tags.md；每行一个标签，或 YAML `tags:` 列表。",
+  fPredefinedHint:
+    "💡 该来源仅作用于此字段；「标签文件」需填路径，「自动检索库」扫描全部笔记 tags，「两者」为并集。",
 
   // ---------- 预定义标签池 ----------
   predCardTitle: "🏷️ 预定义标签池",
@@ -169,6 +178,7 @@ const zh: Record<string, string> = {
     "感谢每一位使用、反馈和提出建议的朋友。你们的问题和想法，让这个小工具一步步变得更顺手、更可靠。🙏",
   aboutSupport: "☕ 觉得有用？扫码请我喝杯咖啡吧：",
   aboutQrCaption: "微信支付收款码",
+  aboutTagline: "让 AI 自动为你的笔记提取标签、摘要与分类 🤖",
 
   // ---------- 杂项 ----------
   addBtn: "添加",
@@ -185,6 +195,7 @@ const en: Record<string, string> = {
   tabAboutLabel: "👤 About",
   tabAboutDesc: "Author, version info and a way to buy the author a coffee.",
   langName: "Language",
+  titleSub: "Auto-extract fields · tidy up your notes 🤖",
 
   // ---------- AI config ----------
   aiCardTitle: "🤖 AI Model",
@@ -266,6 +277,15 @@ const en: Record<string, string> = {
   fDelete: "Delete",
   collapse: "Collapse / expand this field",
   expand: "Expand this field",
+  fNoDesc: "(no field description)",
+  fTagSourceName: "🏷️ Tag source",
+  fTagSourceDesc:
+    "Where this field may pick tags in 'Use predefined / Hybrid' mode: a tag file, scanning all notes' tags in the vault, or both.",
+  fTagFilePathName: "📄 Tag file path",
+  fTagFilePathDesc:
+    "Path relative to vault root, e.g. tags.md; one tag per line, or a YAML 'tags:' list.",
+  fPredefinedHint:
+    "💡 This source applies to this field only; 'Tag file' needs a path, 'Scan vault' reads all notes' tags, 'Both' is the union.",
 
   // ---------- Predefined tag pool ----------
   predCardTitle: "🏷️ Predefined tag pool",
@@ -343,6 +363,7 @@ const en: Record<string, string> = {
     "Thanks to everyone who uses it, reports issues and shares ideas. Your feedback makes this little tool better and more reliable.🙏",
   aboutSupport: "☕ Find it useful? Scan the QR code to buy me a coffee:",
   aboutQrCaption: "WeChat Pay QR code",
+  aboutTagline: "Let AI auto-extract tags, summaries and categories for your notes 🤖",
 
   // ---------- Misc ----------
   addBtn: "Add",

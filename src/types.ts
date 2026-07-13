@@ -43,6 +43,11 @@ export interface FieldMapping {
   constraints: string;
   /** 字段生成模式，见 FieldMode。默认 "generate"。 */
   mode: FieldMode;
+  /** 预定义标签来源（仅当 mode 为 predefined/hybrid 时生效）：
+   *  file=指定标签文件；vault=扫描库内所有笔记的 tags；both=二者并集（默认）。 */
+  tagSource?: TagSource;
+  /** 标签文件路径（相对库根，如 tags.md）。tagSource 含 file 时生效。 */
+  tagFilePath?: string;
 }
 
 /** 预定义标签池的来源：标签文件 / 自动检索库中所有笔记的 tags / 两者并集。 */
@@ -69,11 +74,6 @@ export interface PluginSettings {
    *  - "merge"     : 保留已有值，AI 仅补充新值（数组去重追加，标量仅当原值为空时写入）。
    *  - "overwrite" : AI 全权覆盖所有目标字段。 */
   tagPolicy: "skip" | "merge" | "overwrite";
-  /** 预定义标签池来源：file=指定标签文件；vault=扫描库内所有笔记的 tags；
-   *  both=二者并集（默认）。供字段「使用预定标签 / 混合」模式使用。 */
-  tagSource: TagSource;
-  /** 标签文件路径（相对库根，如 tags.md）。tagSource 含 file 时生效。 */
-  tagFilePath: string;
   /** 送入 AI 的正文最大字符数 */
   maxContentChars: number;
   /** 触发自动打标所需的最小正文长度（字符）。低于此值视为「内容不足」，
@@ -113,6 +113,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
         "3-6 个简洁的中文标签，描述笔记主题；单个标签不含空格，可用连字符；如需限定词表请在「允许取值」中填写。",
       constraints: "",
       mode: "generate",
+      tagSource: "both",
+      tagFilePath: "tags.md",
     },
     {
       enabled: true,
@@ -121,6 +123,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
       description: "一句话中文摘要，不超过 40 字。",
       constraints: "",
       mode: "generate",
+      tagSource: "both",
+      tagFilePath: "tags.md",
     },
     {
       enabled: true,
@@ -129,6 +133,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
       description: "笔记所属分类或领域，单个词。",
       constraints: "",
       mode: "generate",
+      tagSource: "both",
+      tagFilePath: "tags.md",
     },
   ],
   enabledFolders: [],
@@ -138,8 +144,6 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   debounceMs: 3000,
   recursiveScope: true,
   tagPolicy: "skip",
-  tagSource: "both",
-  tagFilePath: "tags.md",
   maxContentChars: 1000,
   minContentChars: 300,
   concurrency: 5,

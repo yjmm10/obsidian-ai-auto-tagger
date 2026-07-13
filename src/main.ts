@@ -12,8 +12,8 @@ export default class AITaggerPlugin extends Plugin {
   private writingPaths: Set<string> = new Set();
   /** 内容不足而挂起、等待后续写入达标的文件（新建空文件场景） */
   private pendingCreate: Set<string> = new Set();
-  /** 预定义标签池缓存（按 tagSource+tagFilePath 签名失效） */
-  private predefinedCache: string[] | null = null;
+  /** 预定义标签池缓存（按字段来源的 tagSource+tagFilePath 签名失效），键为字段名 */
+  private predefinedMapCache: Record<string, string[]> | null = null;
   private poolSig = "";
 
   async onload(): Promise<void> {
@@ -106,25 +106,62 @@ export default class AITaggerPlugin extends Plugin {
     ) {
       this.settings.ai.systemPrompt = (data as any).ai.extraInstruction;
     }
+
+    // 兼容旧配置：将全局 tagSource/tagFilePath 迁移到各字段（v1.5.0 起改为字段级）
+    const raw = data as any;
+    const legacySource = raw?.tagSource as
+      | "file"
+      | "vault"
+      | "both"
+      | undefined;
+    const legacyPath = raw?.tagFilePath as string | undefined;
+    if (legacySource || legacyPath) {
+      this.settings.fields.forEach((f) => {
+        if (!f.tagSource) f.tagSource = legacySource ?? "both";
+        if (!f.tagFilePath) f.tagFilePath = legacyPath ?? "tags.md";
+      });
+    }
+    // 保证每个字段都有预定义标签来源默认值
+    this.settings.fields.forEach((f) => {
+      if (!f.tagSource) f.tagSource = "both";
+      if (!f.tagFilePath) f.tagFilePath = "tags.md";
+    });
   }
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }
 
-  /** 取预定义标签池（带签名缓存：tagSource/tagFilePath 变化或库结构变动时自动失效）。 */
-  async getPredefinedTags(): Promise<string[]> {
-    const sig = `${this.settings.tagSource}|${this.settings.tagFilePath}`;
-    if (this.predefinedCache && this.poolSig === sig) return this.predefinedCache;
-    const pool = await collectPredefinedTags(this.app, this.settings);
-    this.predefinedCache = pool;
+  /** 取各字段的预定义标签池（键为字段名；带签名缓存：字段来源或库结构变动时自动失效）。 */
+  async getPredefinedTags(): Promise<Record<string, string[]>> {
+    const relevant = this.settings.fields.filter(
+      (f) =>
+        f.enabled &&
+        f.name.trim().length > 0 &&
+        f.type === "array" &&
+        (f.mode === "predefined" || f.mode === "hybrid")
+    );
+    const sig = relevant
+      .map((f) => `${f.name}:${f.tagSource ?? "both"}:${f.tagFilePath ?? "tags.md"}`)
+      .join("|");
+    if (this.predefinedMapCache && this.poolSig === sig)
+      return this.predefinedMapCache;
+    const map: Record<string, string[]> = {};
+    for (const f of relevant) {
+      map[f.name.trim()] = await collectPredefinedTags(
+        this.app,
+        f.tagSource ?? "both",
+        f.tagFilePath ?? "tags.md"
+      );
+    }
+    this.predefinedMapCache = map;
     this.poolSig = sig;
-    return pool;
+    return map;
   }
 
   /** 库结构变动（新建/删除笔记）时清空预定义池缓存，下次按需重算。 */
   private invalidatePredefined(): void {
-    this.predefinedCache = null;
+    this.predefinedMapCache = null;
   }
 
   /**
@@ -151,7 +188,7 @@ export default class AITaggerPlugin extends Plugin {
   private async runTag(
     file: TFile,
     mode: "auto" | "manual" | "batch",
-    predefinedTags?: string[]
+    predefinedTags?: Record<string, string[]>
   ): Promise<boolean> {
     if (!isInScope(file, this.settings)) {
       if (mode === "manual")

@@ -171,12 +171,12 @@ export function buildRequestParams(
   fields: FieldMapping[],
   title: string,
   content: string,
-  predefinedTags: string[] = []
+  predefinedTags: Record<string, string[]> = {}
 ): { system: string; prompt: string; schema: z.ZodTypeAny } {
   const enabled = fields.filter((f) => f.enabled && f.name.trim().length > 0);
   const fieldSpec = enabled
     .map((f) => {
-      const pol = resolveFieldPolicy(f, predefinedTags);
+      const pol = resolveFieldPolicy(f, predefinedTags[f.name.trim()] || []);
       const allowedStr = pol.allowed && pol.allowed.length ? pol.allowed.join(", ") : "";
       const cPart = allowedStr ? ` [允许取值：${allowedStr}]` : "";
       const modeHint =
@@ -202,7 +202,7 @@ export function buildRequestParams(
 export function coerceFields(
   data: Record<string, unknown> | undefined,
   fields: FieldMapping[],
-  predefinedTags: string[] = []
+  predefinedTags: Record<string, string[]> = {}
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!data) return out;
@@ -212,7 +212,7 @@ export function coerceFields(
     if (!key) continue;
     const raw = data[key];
     if (raw === undefined || raw === null) continue;
-    const pol = resolveFieldPolicy(f, predefinedTags);
+    const pol = resolveFieldPolicy(f, predefinedTags[key] || []);
     switch (f.type) {
       case "array": {
         let arr: string[] = [];
@@ -295,7 +295,7 @@ export async function callAI(
   title: string,
   content: string,
   modelOverride?: any,
-  predefinedTags: string[] = []
+  predefinedTags: Record<string, string[]> = {}
 ): Promise<AICallResult> {
   const cfgErr = validateSettings(settings);
   if (cfgErr.length) return { ok: false, error: "配置无效：" + cfgErr.join("；") };

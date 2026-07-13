@@ -4,7 +4,7 @@ import { callAI } from "./ai-client";
 import { compileNote, splitFrontmatter } from "./frontmatter";
 
 /**
- * 收集「预定义标签池」：
+ * 收集「预定义标签池」（按字段独立配置来源）：
  * - file  : 读取 tagFilePath 指向的文件（每行一个标签 / YAML `tags:` 列表 / 行内 `#标签`）。
  * - vault : 扫描库内所有 .md 笔记 frontmatter 的 tags，去重合并。
  * - both  : 二者并集（默认）。
@@ -12,7 +12,8 @@ import { compileNote, splitFrontmatter } from "./frontmatter";
  */
 export async function collectPredefinedTags(
   app: App,
-  settings: PluginSettings
+  tagSource: TagSource,
+  tagFilePath: string
 ): Promise<string[]> {
   const map = new Map<string, string>();
   const add = (vals: string[]): void => {
@@ -23,9 +24,8 @@ export async function collectPredefinedTags(
       if (!map.has(k)) map.set(k, t);
     }
   };
-  const src: TagSource = settings.tagSource;
-  if (src === "file" || src === "both") {
-    const path = settings.tagFilePath.trim();
+  if (tagSource === "file" || tagSource === "both") {
+    const path = (tagFilePath || "").trim();
     if (path) {
       const f = app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) {
@@ -38,7 +38,7 @@ export async function collectPredefinedTags(
       }
     }
   }
-  if (src === "vault" || src === "both") {
+  if (tagSource === "vault" || tagSource === "both") {
     for (const file of app.vault.getMarkdownFiles()) {
       try {
         const raw = await app.vault.read(file);
@@ -131,7 +131,7 @@ export async function tagFile(
   file: TFile,
   settings: PluginSettings,
   notice = true,
-  predefinedTags: string[] = []
+  predefinedTags: Record<string, string[]> = {}
 ): Promise<boolean> {
   if (!isInScope(file, settings)) {
     if (notice)

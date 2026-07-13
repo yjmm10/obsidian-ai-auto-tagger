@@ -290,7 +290,7 @@ const JSON_CONTENT = JSON.stringify({
   const pFields: FieldMapping[] = [
     { enabled: true, name: "tags", type: "array", description: "标签", constraints: "", mode: "predefined" },
   ];
-  const pOut = coerceFields({ tags: ["技术", "美食", "读书", "运动"] }, pFields, POOL);
+  const pOut = coerceFields({ tags: ["技术", "美食", "读书", "运动"] }, pFields, { tags: POOL });
   check(
     "predefined 仅保留预定义池内标签",
     Array.isArray(pOut.tags) &&
@@ -301,7 +301,7 @@ const JSON_CONTENT = JSON.stringify({
       !(pOut.tags as string[]).includes("美食")
   );
   // 全部越界时（predefined 严格）不写入该字段（避免写入空 tags）
-  const pOut2 = coerceFields({ tags: ["美食", "旅行"] }, pFields, POOL);
+  const pOut2 = coerceFields({ tags: ["美食", "旅行"] }, pFields, { tags: POOL });
   check(
     "predefined 全部越界时不写入字段",
     !("tags" in pOut2)
@@ -310,7 +310,7 @@ const JSON_CONTENT = JSON.stringify({
   const hFields: FieldMapping[] = [
     { enabled: true, name: "tags", type: "array", description: "标签", constraints: "", mode: "hybrid" },
   ];
-  const hOut = coerceFields({ tags: ["美食", "学习"] }, hFields, POOL);
+  const hOut = coerceFields({ tags: ["美食", "学习"] }, hFields, { tags: POOL });
   check(
     "hybrid 并入预定义池（并集去重）",
     Array.isArray(hOut.tags) &&
@@ -322,8 +322,37 @@ const JSON_CONTENT = JSON.stringify({
       (hOut.tags as string[]).includes("学习")
   );
   // predefined 模式下 buildRequestParams 将池注入 [允许取值]
-  const rpP = buildRequestParams(cfg, pFields, "t", "c", POOL);
+  const rpP = buildRequestParams(cfg, pFields, "t", "c", { tags: POOL });
   check("predefined 模式在提示词注入预定义池", rpP.system.includes("技术, 读书, 运动"));
+
+  // 字段级预定义池：不同字段使用各自独立的标签来源，互不串池
+  const twoFields: FieldMapping[] = [
+    { enabled: true, name: "tags", type: "array", description: "标签", constraints: "", mode: "predefined" },
+    { enabled: true, name: "mood", type: "array", description: "心情", constraints: "", mode: "predefined" },
+  ];
+  const twoMap = { tags: ["技术", "读书"], mood: ["开心", "平静"] };
+  const twoOut = coerceFields(
+    // 故意让 tags 含 mood 池的词、mood 含 tags 池的词，验证不会串池
+    { tags: ["技术", "美食", "开心"], mood: ["开心", "愤怒", "读书"] },
+    twoFields,
+    twoMap
+  );
+  check(
+    "字段级：tags 仅用自身池过滤(保留技术,剔除美食/开心)",
+    Array.isArray(twoOut.tags) &&
+      (twoOut.tags as string[]).length === 1 &&
+      (twoOut.tags as string[]).includes("技术") &&
+      !(twoOut.tags as string[]).includes("美食") &&
+      !(twoOut.tags as string[]).includes("开心")
+  );
+  check(
+    "字段级：mood 仅用自身池过滤(保留开心,剔除愤怒/读书)",
+    Array.isArray(twoOut.mood) &&
+      (twoOut.mood as string[]).length === 1 &&
+      (twoOut.mood as string[]).includes("开心") &&
+      !(twoOut.mood as string[]).includes("愤怒") &&
+      !(twoOut.mood as string[]).includes("读书")
+  );
 
   console.log(`\n结果：通过 ${passed}，失败 ${failed}`);
   if (failed > 0) process.exit(1);

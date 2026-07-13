@@ -10,6 +10,8 @@ import {
 import { verifyConnection } from "./ai-client";
 import { t, Locale } from "./i18n";
 import { QR_CODE_BASE64 } from "./assets";
+import { PLUGIN_LOGO_DATA_URI } from "./logo";
+import { TagSource } from "./types";
 
 type TabId = "tag" | "ai" | "about";
 
@@ -42,9 +44,17 @@ export class AITaggerSettingTab extends PluginSettingTab {
     // 吸顶头部容器：标题 + 语言切换 + 标签导航 + 说明
     const headerEl = containerEl.createDiv({ cls: "ai-tagger-header" });
 
-    // 顶部行：标题（左） + 语言切换（右）
+    // 顶部行：Logo + 标题（左） + 语言切换（右）
     const topRow = headerEl.createDiv({ cls: "ai-tagger-header-top" });
-    topRow.createEl("h2", { text: "AI Auto Tagger" });
+    const logo = topRow.createEl("img", { cls: "ai-tagger-logo" });
+    logo.src = PLUGIN_LOGO_DATA_URI;
+    logo.alt = "AI Auto Tagger";
+    const titleWrap = topRow.createDiv({ cls: "ai-tagger-title-wrap" });
+    titleWrap.createEl("h2", { text: "AI Auto Tagger" });
+    titleWrap.createEl("p", {
+      cls: "ai-tagger-title-sub",
+      text: this.tr("titleSub"),
+    });
     this.buildLangSwitch(topRow);
 
     // 顶部分段标签导航
@@ -82,7 +92,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
     } else {
       this.buildFieldSection(content);
       this.buildScopeSection(content);
-      this.buildPredefinedSection(content);
       this.buildBehaviorSection(content);
       this.buildResetSection(content);
     }
@@ -448,11 +457,15 @@ export class AITaggerSettingTab extends PluginSettingTab {
       const collapsed = this.collapsedFields.has(field);
       const card = listEl.createDiv({
         cls:
-          "ai-tagger-field-card" + (field.enabled ? "" : " is-disabled"),
+          "ai-tagger-field-card" +
+          (field.enabled ? "" : " is-disabled") +
+          (field.mode !== "generate" ? " is-tagged" : ""),
       });
 
       // 卡片头：折叠箭头 + 字段元信息 + 启用开关 + 删除
       const head = card.createDiv({ cls: "ai-tagger-field-head" });
+      const preview = card.createDiv({ cls: "ai-tagger-field-preview" });
+      preview.textContent = field.description || this.tr("fNoDesc");
       const toggle = head.createEl("button", {
         cls: "ai-tagger-field-toggle",
         text: collapsed ? "▸" : "▾",
@@ -577,18 +590,15 @@ export class AITaggerSettingTab extends PluginSettingTab {
           d.addOption("hybrid", this.tr("fModeHybrid"));
           d.setValue(field.mode).onChange(async (v) => {
             field.mode = v as FieldMapping["mode"];
-            const modeSpan = head.querySelector(
-              ".ai-tagger-field-mode"
-            ) as HTMLElement | null;
-            if (modeSpan) {
-              modeSpan.textContent =
-                field.mode === "generate" ? "" : modeLabel(field.mode);
-              modeSpan.style.display =
-                field.mode === "generate" ? "none" : "";
-            }
+            card.toggleClass("is-tagged", field.mode !== "generate");
             await this.plugin.saveSettings();
+            // 重新渲染列表：生成模式切换会改变是否显示「预定义标签来源」
+            this.renderFieldList(listEl);
           });
         });
+
+      // 仅当模式为「使用预定标签 / 混合」时，显示该字段独立的预定义标签来源
+      this.renderFieldPredefined(grid, field, listEl);
 
       new Setting(grid)
         .setName(this.tr("fDescName"))
@@ -596,6 +606,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
         .addTextArea((t2) =>
           t2.setValue(field.description).onChange(async (v) => {
             field.description = v;
+            preview.textContent = v || this.tr("fNoDesc");
             await this.plugin.saveSettings();
           })
         )
@@ -617,6 +628,52 @@ export class AITaggerSettingTab extends PluginSettingTab {
         .then((st) => {
           (st.components[0] as any).inputEl.rows = 2;
         });
+    });
+  }
+
+  /** 字段级「预定义标签来源」配置（仅 predefined / hybrid 模式显示）。 */
+  private renderFieldPredefined(
+    grid: HTMLElement,
+    field: FieldMapping,
+    listEl: HTMLElement
+  ): void {
+    if (field.mode === "generate") return;
+    const src = field.tagSource ?? "both";
+
+    new Setting(grid)
+      .setName(this.tr("fTagSourceName"))
+      .setDesc(this.tr("fTagSourceDesc"))
+      .addDropdown((d) => {
+        d.addOption("file", this.tr("tagSourceFile"));
+        d.addOption("vault", this.tr("tagSourceVault"));
+        d.addOption("both", this.tr("tagSourceBoth"));
+        d.setValue(src).onChange(async (v) => {
+          field.tagSource = v as TagSource;
+          await this.plugin.saveSettings();
+          this.renderFieldList(listEl);
+        });
+      })
+      .setClass("ai-tagger-span2");
+
+    if (src !== "vault") {
+      new Setting(grid)
+        .setName(this.tr("fTagFilePathName"))
+        .setDesc(this.tr("fTagFilePathDesc"))
+        .addText((t2) =>
+          t2
+            .setPlaceholder("tags.md")
+            .setValue(field.tagFilePath ?? "tags.md")
+            .onChange(async (v) => {
+              field.tagFilePath = v.trim();
+              await this.plugin.saveSettings();
+            })
+        )
+        .setClass("ai-tagger-span2");
+    }
+
+    grid.createEl("p", {
+      cls: "ai-tagger-info-note ai-tagger-field-note",
+      text: this.tr("fPredefinedHint"),
     });
   }
 
@@ -651,40 +708,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
       );
   }
 
-  // ============ 预定义标签池 ============
-  private buildPredefinedSection(containerEl: HTMLElement): void {
-    const card = this.card(containerEl, "predCardTitle", "predCardSub");
-    const s = this.plugin.settings;
-
-    new Setting(card)
-      .setName(this.tr("tagSourceName"))
-      .setDesc(this.tr("tagSourceDesc"))
-      .addDropdown((d) => {
-        d.addOption("file", this.tr("tagSourceFile"));
-        d.addOption("vault", this.tr("tagSourceVault"));
-        d.addOption("both", this.tr("tagSourceBoth"));
-        d.setValue(s.tagSource).onChange(async (v) => {
-          s.tagSource = v as PluginSettings["tagSource"];
-          await this.plugin.saveSettings();
-          this.display();
-        });
-      });
-
-    if (s.tagSource === "file" || s.tagSource === "both") {
-      new Setting(card)
-        .setName(this.tr("tagFilePathName"))
-        .setDesc(this.tr("tagFilePathDesc"))
-        .addText((t2) =>
-          t2
-            .setPlaceholder("tags.md")
-            .setValue(s.tagFilePath)
-            .onChange(async (v) => {
-              s.tagFilePath = v.trim();
-              await this.plugin.saveSettings();
-            })
-        );
-    }
-  }
+  // ============ 预定义标签池（字段级） ============
 
   private renderStringList(
     containerEl: HTMLElement,
@@ -1042,6 +1066,18 @@ export class AITaggerSettingTab extends PluginSettingTab {
   // ============ 关于插件 ============
   private buildAboutSection(containerEl: HTMLElement): void {
     const card = this.card(containerEl, "aboutCardTitle", "aboutCardSub");
+
+    // 顶部品牌区：Logo + 名称 + 标语
+    const hero = card.createDiv({ cls: "ai-tagger-about-hero" });
+    const heroLogo = hero.createEl("img", { cls: "ai-tagger-about-logo" });
+    heroLogo.src = PLUGIN_LOGO_DATA_URI;
+    heroLogo.alt = "AI Auto Tagger";
+    const heroText = hero.createDiv({ cls: "ai-tagger-about-hero-text" });
+    heroText.createEl("h3", { text: "AI Auto Tagger" });
+    heroText.createEl("p", {
+      cls: "ai-tagger-about-tagline",
+      text: this.tr("aboutTagline"),
+    });
 
     const info = card.createDiv({ cls: "ai-tagger-about" });
     info.createEl("p", {

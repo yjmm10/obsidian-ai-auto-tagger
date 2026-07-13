@@ -38,6 +38,30 @@
 
 .ai-tagger-header h2 {
   margin: 0;
+  font-size: var(--font-ui-large);
+  letter-spacing: 0.2px;
+}
+
+.ai-tagger-logo {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-m);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+}
+
+.ai-tagger-title-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.ai-tagger-title-sub {
+  margin: 1px 0 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
 }
 
 /* ---------- 语言切换（中 / EN） ---------- */
@@ -265,30 +289,46 @@
 .ai-tagger-field-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
 .ai-tagger-field-card {
+  position: relative;
   border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   background: var(--background-primary);
-  padding: 0 12px 8px;
-  transition: opacity 0.15s ease, filter 0.15s ease;
+  padding: 0 14px 10px;
+  transition: opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ai-tagger-field-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* 预定义 / 混合模式：左侧强调条，提示该字段与标签池关联 */
+.ai-tagger-field-card.is-tagged {
+  border-left-color: var(--interactive-accent);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--interactive-accent) 6%, var(--background-primary)),
+    var(--background-primary) 40%
+  );
 }
 
 .ai-tagger-field-card.is-disabled {
-  opacity: 0.7;
-  filter: grayscale(0.35);
+  opacity: 0.62;
+  filter: grayscale(0.4);
 }
 
 .ai-tagger-field-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 0 6px;
+  gap: 10px;
+  padding: 12px 0 8px;
   border-bottom: 1px solid var(--background-modifier-border);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   cursor: pointer;
   user-select: none;
 }
@@ -303,12 +343,24 @@
 
 .ai-tagger-field-name {
   font-weight: 700;
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-medium);
   color: var(--text-normal);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 55%;
+  max-width: 50%;
+}
+
+.ai-tagger-field-preview {
+  flex: 1 1 100%;
+  order: 3;
+  padding: 0 0 8px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ai-tagger-field-type,
@@ -316,14 +368,16 @@
   flex: 0 0 auto;
   font-size: var(--font-ui-smaller);
   font-weight: 600;
-  padding: 2px 7px;
-  border-radius: var(--radius-s);
+  padding: 2px 8px;
+  border-radius: 999px;
   text-transform: lowercase;
+  letter-spacing: 0.2px;
 }
 
 .ai-tagger-field-type {
   color: var(--text-accent);
   background: var(--background-modifier-hover);
+  border: 1px solid color-mix(in srgb, var(--text-accent) 25%, transparent);
 }
 
 .ai-tagger-field-mode {
@@ -340,10 +394,11 @@
 }
 
 .ai-tagger-field-enable input {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   cursor: pointer;
   margin: 0;
+  accent-color: var(--interactive-accent);
 }
 
 .ai-tagger-field-del {
@@ -353,7 +408,7 @@
   border: 1px solid var(--background-modifier-border);
   background: transparent;
   color: var(--text-muted);
-  padding: 3px 8px;
+  padding: 4px 9px;
   font-size: var(--font-ui-small);
   border-radius: var(--radius-s);
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
@@ -372,9 +427,9 @@
   cursor: pointer;
   background: transparent;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1;
-  padding: 2px 6px;
+  padding: 4px 8px;
   border-radius: var(--radius-s);
   transition: color 0.15s ease, background 0.15s ease;
 }
@@ -387,17 +442,22 @@
 .ai-tagger-field-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  column-gap: 14px;
+  column-gap: 16px;
 }
 
 .ai-tagger-field-grid .setting-item {
   border-top: none;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
 .ai-tagger-field-grid .setting-item .setting-item-name {
   font-size: var(--font-ui-small);
+}
+
+.ai-tagger-field-note {
+  grid-column: 1 / -1;
+  margin: 2px 0 4px;
 }
 
 .ai-tagger-span2 {
@@ -619,6 +679,40 @@
 }
 
 /* ---------- 关于页面 ---------- */
+.ai-tagger-about-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0 14px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-tagger-about-logo {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-m);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.28);
+}
+
+.ai-tagger-about-hero-text {
+  min-width: 0;
+}
+
+.ai-tagger-about-hero-text h3 {
+  margin: 0;
+  font-size: var(--font-ui-large);
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.ai-tagger-about-tagline {
+  margin: 3px 0 0;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
 .ai-tagger-about {
   padding: 8px 0 12px;
 }

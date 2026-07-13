@@ -33,6 +33,7 @@ jobs:
       - name: Verify tag matches manifest version
         run: |
           tag="${GITHUB_REF#refs/tags/}"
+          tag="${tag#v}"   # 去掉可选的 v 前缀（npm version 默认打 vX.Y.Z）
           manifest_version=$(node -p "require('./manifest.json').version")
           if [ "$tag" != "$manifest_version" ]; then
             echo "::error::Tag ($tag) 与 manifest.json 版本 ($manifest_version) 不一致，请先运行 \`npm version\` 更新版本号。"
@@ -43,7 +44,7 @@ jobs:
         run: |
           node -e "
           const fs=require('fs');
-          const tag=process.env.TAG;
+          const tag=process.env.TAG.replace(/^v/,'');   // 去掉可选的 v 前缀
           const md=fs.readFileSync('CHANGELOG.md','utf8');
           const lines=md.split('\n');
           let cap=false, out=[];

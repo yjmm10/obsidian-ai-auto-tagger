@@ -44,10 +44,14 @@ export interface PluginSettings {
   autoOnModify: boolean;
   /** 自动触发防抖时间（毫秒） */
   debounceMs: number;
-  /** true=覆盖已有字段，false=合并（数组去重、标量仅填空时写入） */
-  overwrite: boolean;
-  /** 若 frontmatter 中已存在非空 tags 则整体跳过 */
-  skipIfHasTags: boolean;
+  /** 生效文件夹是否递归包含其下所有子文件夹（默认 true）。
+   *  false=仅该文件夹内的直接文件生效，子文件夹中的文件不生效。 */
+  recursiveScope: boolean;
+  /** 已有标签 / 字段的处理策略
+   *  - "skip"      : 笔记已有非空 tags 时整篇跳过（最保护，绝不改动你喜欢的标签）。默认。
+   *  - "merge"     : 保留已有值，AI 仅补充新值（数组去重追加，标量仅当原值为空时写入）。
+   *  - "overwrite" : AI 全权覆盖所有目标字段。 */
+  tagPolicy: "skip" | "merge" | "overwrite";
   /** 送入 AI 的正文最大字符数 */
   maxContentChars: number;
   /** 触发自动打标所需的最小正文长度（字符）。低于此值视为「内容不足」，
@@ -99,8 +103,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   autoOnCreate: true,
   autoOnModify: false,
   debounceMs: 3000,
-  overwrite: false,
-  skipIfHasTags: true,
+  recursiveScope: true,
+  tagPolicy: "skip",
   maxContentChars: 1000,
   minContentChars: 300,
   concurrency: 5,

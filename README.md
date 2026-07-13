@@ -57,6 +57,9 @@
    ```
 3. 启用 **AI Auto Tagger**，进入设置填写 AI 接口即可使用。
 
+> [!note]
+> **自动更新**：BRAT 添加的 Beta 插件默认会定期检查并自动拉取最新 Release；若未自动更新，可在 BRAT 设置中对该插件点击「Check for updates」，或开启「Auto-update plugins on startup」。社区插件（上架后）则由 Obsidian 内置机制自动更新。
+
 ### 方式二：手动安装
 
 1. 克隆本仓库并执行构建：
@@ -147,25 +150,27 @@ npm test           # 本地桩验证（不依赖 Obsidian / 真实网络）
 
 ### 发布新版本
 
-发布由 **GitHub Actions 自动完成**：打一个与 `manifest.json` 版本一致的 Git tag 并推送，`.github/workflows/release.yml` 会云端构建并创建 Release（上传 `main.js`、`manifest.json`、`styles.css`）。**本地无需安装 `gh`**。
+发布由 **GitHub Actions 自动完成**：打一个与 `manifest.json` 版本一致的 Git tag 并推送，`.github/workflows/release.yml` 会云端构建，并把 `CHANGELOG.md` 中对应版本段提取为 Release 说明（结构化展示功能点与改进），同时上传 `main.js`、`manifest.json`、`styles.css`。**本地无需安装 `gh`**。
 
-**首次发布**（当前 `manifest.json` 已是 `1.0.0`）：
+**发版步骤**：
 
-```bash
-git tag 1.0.0
-git push --tags
-```
-
-**后续发布**（自动 bump 版本并打 tag）：
-
-```bash
-npm version patch     # 或 minor / major；自动更新 manifest.json + versions.json 并提交、打 tag
-git push && git push --tags
-```
+1. 在 `CHANGELOG.md` 顶部新增 `## [x.y.z] - YYYY-MM-DD` 段落，写明本次「新增 / 改进」。
+2. 提交改动：
+   ```bash
+   git add CHANGELOG.md
+   git commit -m "chore: 记录 x.y.z 变更"
+   git push
+   ```
+3. 打 tag 并推送（自动 bump 版本、同步 `manifest.json` 与 `versions.json` 并提交、打 tag）：
+   ```bash
+   npm version patch     # 或 minor / major
+   git push && git push --tags
+   ```
 
 > [!warning]
 > tag 名必须与 `manifest.json` 的 `version` 完全一致，否则 `release.yml` 会在校验步骤失败。
 > `main.js` 被 `.gitignore` 忽略，由 CI 在云端 `npm run build` 生成，请勿手动提交。
+> Release 说明取自 `CHANGELOG.md` 的对应版本段；若某版本缺段，则该 Release 说明为空，请务必先维护 CHANGELOG。
 
 ### 加入社区插件列表
 

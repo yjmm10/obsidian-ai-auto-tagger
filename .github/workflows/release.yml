@@ -1,7 +1,7 @@
 name: Release Obsidian plugin
 
 # 仅在推送「版本 tag」时触发（如 1.0.0）。
-# 正常工作流：本地修改 → `npm version patch`(自动 bump+commit+tag)
+# 正常工作流：本地修改 → 更新 CHANGELOG.md → `npm version patch`(自动 bump+commit+tag)
 #            → `git push && git push --tags` → 此处自动构建并发布 Release。
 on:
   push:
@@ -39,6 +39,24 @@ jobs:
             exit 1
           fi
 
+      - name: Extract changelog for this version
+        run: |
+          node -e "
+          const fs=require('fs');
+          const tag=process.env.TAG;
+          const md=fs.readFileSync('CHANGELOG.md','utf8');
+          const lines=md.split('\n');
+          let cap=false, out=[];
+          for(const l of lines){
+            const m=l.match(/^##\s+\[([^\]]+)\]/);
+            if(m){ if(m[1]===tag){cap=true; continue;} else if(cap){break;} }
+            if(cap) out.push(l);
+          }
+          fs.writeFileSync('release_notes.md', out.join('\n').trim()+'\n');
+          "
+        env:
+          TAG: ${{ github.ref_name }}
+
       - name: Package release assets
         run: |
           mkdir -p dist
@@ -50,7 +68,8 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          generate_release_notes: true
+          # 用 CHANGELOG.md 中对应版本段作为发布说明，结构化呈现功能点与改进
+          body_path: release_notes.md
           files: |
             dist/main.js
             dist/manifest.json

@@ -478,6 +478,19 @@ export class AITaggerSettingTab extends PluginSettingTab {
       "如 Templates / _private",
       this.plugin.settings.excludedFolders
     );
+
+    const s = this.plugin.settings;
+    new Setting(card)
+      .setName("包含子文件夹（递归）")
+      .setDesc(
+        "开启：生效文件夹下所有层级的子文件夹都生效。关闭：仅该文件夹内的直接文件生效，子文件夹中的文件不处理。"
+      )
+      .addToggle((t) =>
+        t.setValue(s.recursiveScope).onChange(async (v) => {
+          s.recursiveScope = v;
+          await this.plugin.saveSettings();
+        })
+      );
   }
 
   private renderStringList(
@@ -725,23 +738,20 @@ export class AITaggerSettingTab extends PluginSettingTab {
       );
 
     new Setting(card)
-      .setName("覆盖已有字段")
-      .setDesc("关闭时为「合并」：数组去重追加，标量仅当原值为空时写入。")
-      .addToggle((t) =>
-        t.setValue(s.overwrite).onChange(async (v) => {
-          s.overwrite = v;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    new Setting(card)
-      .setName("已有标签则跳过")
-      .setDesc("frontmatter 中已存在非空 tags 时整体跳过该文件。")
-      .addToggle((t) =>
-        t.setValue(s.skipIfHasTags).onChange(async (v) => {
-          s.skipIfHasTags = v;
-          await this.plugin.saveSettings();
-        })
+      .setName("已有标签处理策略")
+      .setDesc(
+        "保护（默认）：笔记已有标签则整篇跳过，绝不改动你喜欢的标签；合并：保留已有值，AI 仅补充新标签/字段；覆盖：AI 全权重写所有目标字段。"
+      )
+      .addDropdown((dd) =>
+        dd
+          .addOption("skip", "保护已有（有标签则跳过）")
+          .addOption("merge", "合并（保留原有 + AI 补充）")
+          .addOption("overwrite", "覆盖（AI 全权）")
+          .setValue(s.tagPolicy)
+          .onChange(async (v) => {
+            s.tagPolicy = v as PluginSettings["tagPolicy"];
+            await this.plugin.saveSettings();
+          })
       );
 
     new Setting(card)

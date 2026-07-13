@@ -13,7 +13,16 @@ export function isInScope(file: TFile, settings: PluginSettings): boolean {
   if (settings.enabledFolders.length === 0) return true;
   for (const f of settings.enabledFolders) {
     const e = f.trim();
-    if (e && (p === e || p.startsWith(e + "/"))) return true;
+    if (!e) continue;
+    if (p === e) return true;
+    if (settings.recursiveScope) {
+      // 递归：该文件夹下任意深度的文件都生效
+      if (p.startsWith(e + "/")) return true;
+    } else {
+      // 非递归：仅该文件夹下的「直接文件」生效（不含子文件夹）
+      const parent = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
+      if (parent === e) return true;
+    }
   }
   return false;
 }
@@ -59,11 +68,11 @@ export async function tagFile(
   const fm: Record<string, unknown> = frontmatter ?? {};
 
   if (
-    settings.skipIfHasTags &&
+    settings.tagPolicy === "skip" &&
     Array.isArray(fm.tags) &&
     (fm.tags as unknown[]).length > 0
   ) {
-    if (notice) new Notice(`AI Tagger: ${file.path} 已有标签，已跳过`);
+    if (notice) new Notice(`AI Tagger: ${file.path} 已有标签，已跳过（保护模式）`);
     return false;
   }
 
@@ -87,6 +96,7 @@ export async function tagFile(
 
   const newFm: Record<string, unknown> = { ...fm };
   let changed = false;
+  const overwrite = settings.tagPolicy === "overwrite";
 
   for (const field of settings.fields) {
     if (!field.enabled || !field.name.trim()) continue;
@@ -94,12 +104,14 @@ export async function tagFile(
     if (!(key in res.data)) continue;
     const coerced = coerce(res.data[key], field.type);
 
-    if (settings.overwrite) {
+    if (overwrite) {
+      // 覆盖模式：AI 全权，任何差异都写入
       if (JSON.stringify(newFm[key]) !== JSON.stringify(coerced)) {
         newFm[key] = coerced;
         changed = true;
       }
     } else {
+      // 保护 / 合并模式：保留已有值，AI 仅补充
       if (field.type === "array") {
         const existing = Array.isArray(newFm[key])
           ? (newFm[key] as unknown[])

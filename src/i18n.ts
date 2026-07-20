@@ -11,46 +11,39 @@ export type Locale = "zh" | "en";
 const zh: Record<string, string> = {
   // ---------- 头部 / 标签页 ----------
   tabTagLabel: "🏷️ AI 打标签",
-  tabTagDesc: "核心功能：定义提取字段、生效范围、触发与写入行为。",
+  tabTagDesc: "定义字段、范围与触发",
   tabAiLabel: "⚙️ AI 配置",
-  tabAiDesc: "选择厂商、模型、密钥与调用参数，并测试连接。",
+  tabAiDesc: "厂商、模型、密钥与测试",
   tabAboutLabel: "👤 关于",
-  tabAboutDesc: "作者介绍、版本信息以及一杯咖啡的支持方式。",
+  tabAboutDesc: "作者与版本",
   langName: "语言",
   titleSub: "智能提取字段 · 自动整理你的笔记 🤖",
 
   // ---------- AI 配置 ----------
   aiCardTitle: "🤖 AI 模型",
-  aiCardSub: "选择厂商、模型、API Key 与调用参数，然后测试连接。",
+  aiCardSub: "厂商、模型、密钥与测试连接。",
   providerName: "🏢 厂商",
-  providerDesc:
-    "选择 AI 服务商；OpenAI 兼容类厂商（含国内厂商与本地 Ollama）共用同一套接口。",
   apiKeyName: "🔑 API Key",
-  apiKeyDescReq: "鉴权令牌，仅保存在本地。",
-  apiKeyDescNoKey: "该厂商（本地模型）无需 Key。",
+  apiKeyDescReq: "仅本地保存",
+  apiKeyDescNoKey: "本地模型无需",
   apiKeyPhReq: "sk-... / 你的密钥",
   apiKeyPhNoKey: "（本地模型无需）",
   baseUrlName: "🌐 Base URL",
-  baseUrlDescOpenai:
-    "OpenAI 兼容接口地址；已自动填入厂商默认，可改（如 coding 套餐需改路径）。",
-  baseUrlDescOther: "anthropic / google 一般留空走官方；如需代理可填。",
+  baseUrlDescOpenai: "OpenAI 兼容地址，已填默认，可改",
+  baseUrlDescOther: "官方一般留空，代理再填",
   baseUrlPh: "（留空走官方）",
   modelName: "🧠 模型",
-  modelDesc:
-    "从内置清单选择，或选「自定义模型…」手动输入（如你的私有/微调模型）。",
   customModelLabel: "自定义模型…",
   customModelName: "自定义模型名",
-  customModelDesc: "填写传给 API 的模型标识，例如 glm-5.2、my-finetune-01。",
-  tempName: "🌡️ 温度 (temperature)",
-  tempDesc: "0 更确定，1 更发散。标注任务建议 0.2–0.4。",
-  topPName: "🎯 核采样 (top_p)",
-  topPDesc: "0–1，与温度配合控制多样性；一般 0.9–1。",
+  tempName: "🌡️ 温度",
+  tempDesc: "0 确定 · 1 发散",
+  topPName: "🎯 核采样",
+  topPDesc: "控制多样性",
   maxTokensName: "📏 最大输出 token",
-  maxTokensDesc: "单次返回的字段 JSON 上限，系统提示词不计入该限制。",
-  maxTokensNote:
-    "💡 该上限只限制 AI 生成的字段结果，不包含系统提示词、标题与正文。",
+  maxTokensDesc: "字段 JSON 上限",
+  maxTokensNote: "仅限制生成结果，不含系统提示词",
   timeoutName: "⏱️ 请求超时（毫秒）",
-  timeoutDesc: "超时未响应则放弃，避免卡死。",
+  timeoutDesc: "超时放弃",
   resetParams: "🔄 重置参数",
   resetParamsNotice: "AI Tagger：已重置模型参数",
   sysPromptName: "📝 系统提示词",
@@ -62,12 +55,13 @@ const zh: Record<string, string> = {
   testing: "测试中…",
   testOk: "连接成功 ✓",
   testFail: "连接失败 ✗",
+  testOkNotice: "AI Tagger：连接成功 ✓",
   testFailNotice: "AI Tagger：连接失败 ✗",
 
   // ---------- 提取字段 ----------
   fieldCardTitle: "🏷️ 提取字段",
   fieldCardSub:
-    "AI 将按下列字段返回 JSON 并写入笔记 frontmatter。键名即 JSON 键名（如 tags / summary / category）。",
+    "AI 按字段返回 JSON 写入 frontmatter；键名即 JSON 键（如 tags / summary）。",
   fieldMasterName: "✅ 启用全部字段",
   fieldMasterDesc: "关闭后所有字段不参与提取，但配置仍保留。",
   restoreFields: "🔄 恢复默认字段",
@@ -76,33 +70,20 @@ const zh: Record<string, string> = {
   unnamed: "未命名字段",
   noFields: "还没有字段，点击「➕ 添加字段」开始配置。",
   fEnabledName: "✅ 启用",
-  fEnabledDesc: "该字段是否参与本次提取与写入。",
+  fEnabledDesc: "参与提取与写入",
   fNameName: "🔖 字段名",
-  fNameDesc: "frontmatter 键名，亦为返回 JSON 的键名。",
   fTypeName: "🧩 类型",
-  fTypeDesc: "决定写入 frontmatter 的值类型。",
-  fDescName: "📝 说明",
-  fDescDesc: "描述该字段的含义与格式要求。",
-  fConstraintsName: "🎨 允许取值",
-  fConstraintsDesc:
-    "可选。限定该字段的取值范围，如「技术, 读书, 生活」或与词表一致。AI 仅可从中选择，数组字段回落时也会过滤越界值。",
   fModeName: "🎭 生成模式",
-  fModeDesc:
-    "该字段的值如何产生：直接生成=AI 自由产出；使用预定标签=仅从预定义标签池中选择；混合=AI 生成 + 始终并入预定义标签池。",
   fModeGenerate: "直接生成",
   fModePredefined: "使用预定标签",
   fModeHybrid: "混合（生成 + 预定义）",
   fDelete: "删除",
   collapse: "折叠/展开该字段",
   expand: "展开该字段",
-  fNoDesc: "（未填写字段说明）",
   fTagSourceName: "🏷️ 标签来源",
-  fTagSourceDesc:
-    "该字段「使用预定标签 / 混合」模式可取用的标签来源：标签文件、自动检索库全部笔记的 tags，或二者并集。",
   fTagFilePathName: "📄 标签文件路径",
-  fTagFilePathDesc: "相对库根的路径，如 tags.md；每行一个标签，或 YAML `tags:` 列表。",
-  fPredefinedHint:
-    "💡 该来源仅作用于此字段；「标签文件」需填路径，「自动检索库」扫描全部笔记 tags，「两者」为并集。",
+  fPredefinedTypeNote:
+    "⚠️ 数值 / 布尔字段无标签池概念，其值由 AI 直接生成。",
 
   // ---------- 预定义标签池 ----------
   predCardTitle: "🏷️ 预定义标签池",
@@ -118,52 +99,44 @@ const zh: Record<string, string> = {
 
   // ---------- 触发说明 ----------
   triggerNote:
-    "触发说明：新建 / 网页剪藏（属「新建自动打标」）；保存 / 更新（属「内容变更自动打标」）；手动命令始终可用。自动触发默认开启：当某个字段缺失或被删除时，会**实时补全**（不受字数限制）；仅当所有字段都已存在、正文不足 {min} 字时，才暂缓调用、待你写入达标后自动触发。",
+    "新建/剪藏、保存/更新自动触发；手动命令始终可用。字段缺失即实时补全；全部存在且正文<{min}字则暂缓。",
   realtimeNote:
-    "⚡ 实时性：空字段 / 被删除字段一旦触发即**立即补全**，不被字数门槛阻挡；其余字段按上方「已有标签处理策略」处理。停止编辑约 {debounce} 毫秒后发起 AI 调用。",
+    "⚡ 空/被删字段立即补全，不受字数限制；停止编辑约 {debounce} 毫秒后调用。",
 
   // ---------- 生效范围 ----------
   scopeCardTitle: "📁 生效范围",
-  scopeCardSub:
-    "相对库根的路径，不含前置斜杠。留空「生效文件夹」表示全库生效；排除优先于包含。",
+  scopeCardSub: "留空=全库；排除优先于包含。",
   enabledFoldersName: "生效文件夹",
-  enabledFoldersDesc:
-    "输入时下方实时提示知识库中匹配的目录；方向键选择、回车或点击加入，也可手写任意路径。",
   enabledFoldersPh: "如 Inbox / Articles/Read",
   excludedFoldersPh: "如 Templates / _private",
   excludedFoldersName: "排除文件夹",
   recursiveName: "📂 包含子文件夹（递归）",
-  recursiveDesc:
-    "开启：生效文件夹下所有层级的子文件夹都生效。关闭：仅该文件夹内的直接文件生效，子文件夹中的文件不处理。",
 
   // ---------- 触发与行为 ----------
   behaviorCardTitle: "🚀 触发与行为",
-  behaviorCardSub: "控制何时调用 AI、写入策略与性能参数。",
+  behaviorCardSub: "何时调用 AI、写入策略与性能参数。",
   autoCreateName: "🆕 新建 / 剪藏自动打标",
-  autoCreateDesc: "新建 .md 文件或网页剪藏生成文件时触发（防抖后）。默认开启。",
   autoModifyName: "📝 保存 / 更新自动打标",
-  autoModifyDesc:
-    "已有文件内容新增或保存后触发（防抖后）。默认开启；关闭则仅手动命令可打标。",
   debounceName: "⏳ 防抖时间（毫秒）",
-  debounceDesc: "停止输入/写入后等待多久再调用 AI。",
   tagPolicyName: "🛡️ 已有标签处理策略",
-  tagPolicyDesc:
-    "已有「非空」字段的写入策略（空字段 / 被删除的字段**始终实时补全**，不受此策略影响）：🛡️ 保护=保留现有非空值，绝不改动你喜欢的标签；🔀 合并=保留已有值，AI 仅补充新值（默认）；♻️ 覆盖=AI 全权覆盖所有目标字段。",
   tagPolicySkip: "保护已有（有标签则跳过）",
   tagPolicyMerge: "合并（保留原有 + AI 补充）",
   tagPolicyOverwrite: "覆盖（AI 全权）",
   maxContentName: "📄 送入 AI 的最大字符数",
-  maxContentDesc: "截断正文以控制 token 消耗与费用。",
-  minContentName: "📏 触发打标的最小正文字数",
-  minContentDesc:
-    "正文不足该字数且**所有字段都已存在**时视为「内容不足」，暂缓调用、待你写入达标后自动触发；若某字段缺失 / 被删除，则不受此限制，立即实时补全。设为 0 表示总是立即调用。",
+  minContentName: "📏 触发打标最小正文字数",
   concurrencyName: "🔀 批量并发数",
-  concurrencyDesc: "批量处理时的最大并发请求数。",
+
+  // ---------- 执行日志 ----------
+  logCardTitle: "📜 执行日志",
+  logCardSub: "记录插件的打标过程到库内日志文件，便于排查问题。",
+  logEnabledName: "📜 启用执行日志",
+  logEnabledDesc: "开启后，每次打标（开始 / 跳过 / 成功 / 失败）都会追加写入日志文件；同时镜像到浏览器控制台。",
+  logPathName: "📄 日志文件路径",
+  logPathDesc: "相对库根的路径，如 ai-auto-tagger.log；日志以追加方式写入，文件超过 1MB 自动轮转。",
 
   // ---------- 恢复配置 ----------
   resetCardTitle: "⚠️ 恢复配置",
-  resetCardSub:
-    "把本插件的所有设置恢复为出厂默认值（含 AI 配置、字段、范围与行为）。此操作不可撤销。",
+  resetCardSub: "恢复全部设置为出厂默认（不可撤销）。",
   restoreAll: "恢复全部默认配置",
   confirmReset: "确认恢复？再次点击将清空当前配置",
   restoreAllNotice: "AI Tagger：已恢复全部默认配置",
@@ -182,6 +155,13 @@ const zh: Record<string, string> = {
   aboutQrCaption: "微信支付收款码",
   aboutTagline: "让 AI 自动为你的笔记提取标签、摘要与分类 🤖",
 
+  // ---------- 捐赠 / 支持 ----------
+  donationCardTitle: "☕ 支持作者",
+  donationCardSub: "如果这个插件帮你节省了时间，欢迎请我喝杯咖啡 ☕：微信扫码，或点击下方链接。",
+  donationWechatCaption: "微信支付收款码",
+  donationBmc: "☕ Buy Me a Coffee",
+  donationAfdian: "💗 爱发电",
+
   // ---------- 杂项 ----------
   addBtn: "添加",
 };
@@ -189,63 +169,50 @@ const zh: Record<string, string> = {
 const en: Record<string, string> = {
   // ---------- Header / tabs ----------
   tabTagLabel: "🏷️ AI Tagging",
-  tabTagDesc:
-    "Core feature: define extraction fields, scope, triggers and write behavior.",
+  tabTagDesc: "Define fields, scope and triggers",
   tabAiLabel: "⚙️ AI Config",
-  tabAiDesc:
-    "Pick provider, model, API key and call params; test the connection.",
+  tabAiDesc: "Provider, model, key and test",
   tabAboutLabel: "👤 About",
-  tabAboutDesc: "Author, version info and a way to buy the author a coffee.",
+  tabAboutDesc: "Author and version",
   langName: "Language",
   titleSub: "Auto-extract fields · tidy up your notes 🤖",
 
   // ---------- AI config ----------
   aiCardTitle: "🤖 AI Model",
-  aiCardSub:
-    "Select provider, model, API key and call params, then test the connection.",
+  aiCardSub: "Provider, model, key and test connection.",
   providerName: "🏢 Provider",
-  providerDesc:
-    "Choose the AI vendor. OpenAI-compatible vendors (incl. domestic vendors and local Ollama) share one interface.",
   apiKeyName: "🔑 API Key",
-  apiKeyDescReq: "Auth token, stored locally only.",
-  apiKeyDescNoKey: "This vendor (local model) needs no key.",
+  apiKeyDescReq: "Stored locally only",
+  apiKeyDescNoKey: "Local model needs no key",
   apiKeyPhReq: "sk-... / your key",
   apiKeyPhNoKey: "(local model: not needed)",
   baseUrlName: "🌐 Base URL",
-  baseUrlDescOpenai:
-    "OpenAI-compatible endpoint; pre-filled with the provider default, editable (e.g. coding plan needs a different path).",
-  baseUrlDescOther:
-    "anthropic / google usually leave blank for the official endpoint; fill if using a proxy.",
+  baseUrlDescOpenai: "OpenAI-compatible endpoint, pre-filled; editable",
+  baseUrlDescOther: "Usually blank; fill only for a proxy",
   baseUrlPh: "(blank = official)",
   modelName: "🧠 Model",
-  modelDesc:
-    "Pick from the built-in list, or choose 'Custom model…' to type one (e.g. your private/finetuned model).",
   customModelLabel: "Custom model…",
   customModelName: "Custom model name",
-  customModelDesc:
-    "The model id sent to the API, e.g. glm-5.2, my-finetune-01.",
   tempName: "🌡️ Temperature",
-  tempDesc: "0 = deterministic, 1 = diverse. For tagging, 0.2–0.4 is recommended.",
+  tempDesc: "0 = strict · 1 = diverse",
   topPName: "🎯 Top-p",
-  topPDesc:
-    "0–1, controls diversity together with temperature; usually 0.9–1.",
+  topPDesc: "Controls diversity",
   maxTokensName: "📏 Max output tokens",
-  maxTokensDesc: "Per-call generated-field JSON cap; system prompt is not counted.",
-  maxTokensNote:
-    "💡 This cap only limits the generated field JSON; it does not include the system prompt, title or body.",
+  maxTokensDesc: "Generated-field JSON cap",
+  maxTokensNote: "Limits output only; excludes the system prompt",
   timeoutName: "⏱️ Request timeout (ms)",
-  timeoutDesc: "Give up if no response in time, to avoid hanging.",
+  timeoutDesc: "Give up if no response in time",
   resetParams: "🔄 Reset params",
   resetParamsNotice: "AI Tagger: model params reset",
   sysPromptName: "📝 System prompt",
-  sysPromptDesc:
-    "Custom system prompt; leave blank to use the built-in optimized version. Field definitions are appended automatically.",
+  sysPromptDesc: "Blank = built-in default; field defs appended.",
   sysPromptReset: "🔄 Restore default system prompt",
   sysPromptResetNotice: "AI Tagger: default system prompt restored",
   testConn: "🔌 Test connection",
   testing: "Testing…",
   testOk: "Connected ✓",
   testFail: "Failed ✗",
+  testOkNotice: "AI Tagger: connected ✓",
   testFailNotice: "AI Tagger: connection failed ✗",
 
   // ---------- Extraction fields ----------
@@ -260,34 +227,20 @@ const en: Record<string, string> = {
   unnamed: "Unnamed field",
   noFields: "No fields yet. Click '➕ Add field' to get started.",
   fEnabledName: "✅ Enabled",
-  fEnabledDesc: "Whether this field takes part in extraction and writing.",
+  fEnabledDesc: "Take part in extraction and writing",
   fNameName: "🔖 Field name",
-  fNameDesc: "frontmatter key, also the JSON key returned.",
   fTypeName: "🧩 Type",
-  fTypeDesc: "Determines the value type written to frontmatter.",
-  fDescName: "📝 Description",
-  fDescDesc: "Describe the field's meaning and format requirements.",
-  fConstraintsName: "🎨 Allowed values",
-  fConstraintsDesc:
-    "Optional. Restrict the allowed values, e.g. 'tech, reading, life'. AI may only choose from them; array fields are also filtered on fallback.",
   fModeName: "🎭 Generation mode",
-  fModeDesc:
-    "How this field's value is produced: Generate=AI free output; Use predefined=only pick from the predefined tag pool; Hybrid=AI generates + always merge the predefined pool.",
   fModeGenerate: "Generate directly",
   fModePredefined: "Use predefined tags",
   fModeHybrid: "Hybrid (generate + predefined)",
   fDelete: "Delete",
   collapse: "Collapse / expand this field",
   expand: "Expand this field",
-  fNoDesc: "(no field description)",
   fTagSourceName: "🏷️ Tag source",
-  fTagSourceDesc:
-    "Where this field may pick tags in 'Use predefined / Hybrid' mode: a tag file, scanning all notes' tags in the vault, or both.",
   fTagFilePathName: "📄 Tag file path",
-  fTagFilePathDesc:
-    "Path relative to vault root, e.g. tags.md; one tag per line, or a YAML 'tags:' list.",
-  fPredefinedHint:
-    "💡 This source applies to this field only; 'Tag file' needs a path, 'Scan vault' reads all notes' tags, 'Both' is the union.",
+  fPredefinedTypeNote:
+    "⚠️ Numeric / boolean fields have no tag pool; the AI generates the value directly.",
 
   // ---------- Predefined tag pool ----------
   predCardTitle: "🏷️ Predefined tag pool",
@@ -304,53 +257,44 @@ const en: Record<string, string> = {
 
   // ---------- Trigger note ----------
   triggerNote:
-    "Triggers: new file / web clip (Auto-tag on create); save / update (Auto-tag on change); the manual command is always available. Auto is on by default: when a field is missing or was deleted, it is **filled in real time** (no char limit); only when every field already exists AND the body is under {min} chars do we defer the call until you write enough.",
+    "New/clip and save/update auto-trigger; manual command always works. Missing field = real-time fill; all present and body < {min} chars = defer.",
   realtimeNote:
-    "⚡ Real-time: empty / deleted fields are **filled immediately** when triggered, never blocked by the char threshold; other fields follow the 'Existing-tag policy' above. AI is called ~{debounce} ms after you stop editing.",
+    "⚡ Empty/deleted fields fill immediately, no char limit; AI called ~{debounce} ms after you stop.",
 
   // ---------- Scope ----------
   scopeCardTitle: "📁 Scope",
-  scopeCardSub:
-    "Paths relative to vault root, no leading slash. Empty 'Enabled folders' = whole vault; exclusion overrides inclusion.",
+  scopeCardSub: "Blank = whole vault; exclusion overrides inclusion.",
   enabledFoldersName: "Enabled folders",
-  enabledFoldersDesc:
-    "Matching vault folders appear as you type; arrow keys + Enter or click to add; or type any path.",
   enabledFoldersPh: "e.g. Inbox / Articles/Read",
   excludedFoldersPh: "e.g. Templates / _private",
   excludedFoldersName: "Excluded folders",
   recursiveName: "📂 Include subfolders (recursive)",
-  recursiveDesc:
-    "On: all subfolder levels under the enabled folder apply. Off: only direct files in that folder apply; subfolders are ignored.",
 
   // ---------- Triggers & behavior ----------
   behaviorCardTitle: "🚀 Triggers & behavior",
-  behaviorCardSub: "Control when AI is called, write policy and performance params.",
+  behaviorCardSub: "When AI runs, write policy and performance.",
   autoCreateName: "🆕 Auto-tag on new / clip",
-  autoCreateDesc:
-    "Triggers when a new .md file is created or clipped from web (after debounce). On by default.",
   autoModifyName: "📝 Auto-tag on save / update",
-  autoModifyDesc:
-    "Triggers after existing file content changes or is saved (after debounce). On by default; turn off to allow manual tagging only.",
   debounceName: "⏳ Debounce (ms)",
-  debounceDesc: "Wait this long after typing/writing stops before calling AI.",
   tagPolicyName: "🛡️ Existing-tag policy",
-  tagPolicyDesc:
-    "How non-empty existing fields are written (empty / deleted fields are **always filled in real time** and ignore this policy): 🛡️ Protect=keep existing non-empty values, never change tags you like; 🔀 Merge=keep existing, AI only adds (default); ♻️ Overwrite=AI rewrites all target fields.",
   tagPolicySkip: "Protect (skip if tagged)",
   tagPolicyMerge: "Merge (keep + AI adds)",
   tagPolicyOverwrite: "Overwrite (AI takes over)",
   maxContentName: "📄 Max chars sent to AI",
-  maxContentDesc: "Truncate the body to control token cost.",
   minContentName: "📏 Min chars to trigger",
-  minContentDesc:
-    "When the body is under this many chars AND **every field already exists**, it is 'insufficient' and deferred until you write enough; if any field is missing / deleted, it is filled in real time regardless. Set 0 to always call immediately.",
   concurrencyName: "🔀 Batch concurrency",
-  concurrencyDesc: "Max concurrent requests during batch processing.",
+
+  // ---------- Execution log ----------
+  logCardTitle: "📜 Execution log",
+  logCardSub: "Record the plugin's tagging process to a log file in the vault for troubleshooting.",
+  logEnabledName: "📜 Enable execution log",
+  logEnabledDesc: "When on, each tagging run (start / skip / success / failure) is appended to the log file and mirrored to the browser console.",
+  logPathName: "📄 Log file path",
+  logPathDesc: "Path relative to vault root, e.g. ai-auto-tagger.log; appended on each run, auto-rotated when larger than 1MB.",
 
   // ---------- Reset config ----------
   resetCardTitle: "⚠️ Reset config",
-  resetCardSub:
-    "Restore all plugin settings to factory defaults (AI config, fields, scope and behavior). This cannot be undone.",
+  resetCardSub: "Restore all settings to factory defaults (cannot be undone).",
   restoreAll: "Reset all to defaults",
   confirmReset: "Confirm reset? Click again to wipe current config",
   restoreAllNotice: "AI Tagger: all settings reset",
@@ -368,6 +312,13 @@ const en: Record<string, string> = {
   aboutSupport: "☕ Find it useful? Scan the QR code to buy me a coffee:",
   aboutQrCaption: "WeChat Pay QR code",
   aboutTagline: "Let AI auto-extract tags, summaries and categories for your notes 🤖",
+
+  // ---------- Donation / Support ----------
+  donationCardTitle: "☕ Support the author",
+  donationCardSub: "If this plugin saves you time, feel free to buy me a coffee ☕: scan the WeChat QR code, or use the links below.",
+  donationWechatCaption: "WeChat Pay QR code",
+  donationBmc: "☕ Buy Me a Coffee",
+  donationAfdian: "💗 Afdian",
 
   // ---------- Misc ----------
   addBtn: "Add",

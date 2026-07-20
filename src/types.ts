@@ -83,6 +83,10 @@ export interface PluginSettings {
   concurrency: number;
   /** 设置界面语言：zh=中文（默认），en=英文 */
   locale: "zh" | "en";
+  /** 是否启用执行日志：将每次打标的过程（开始/跳过/成功/失败）写入库内日志文件。 */
+  logEnabled: boolean;
+  /** 日志文件路径（相对库根，如 ai-auto-tagger.log）；logEnabled 为 true 时生效。 */
+  logPath: string;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -93,8 +97,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
     model: "gpt-4o-mini",
     temperature: 0.3,
     topP: 1,
-    maxTokens: 100,
-    requestTimeout: 30000,
+    maxTokens: 512,
+    requestTimeout: 60000,
     systemPrompt:
       "你是一名严谨的中文笔记元数据提取助手。\n" +
       "请根据用户提供的笔记（标题 + 正文），提取下方定义的字段，并只输出一个 JSON 对象。\n\n" +
@@ -148,4 +152,6 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   minContentChars: 300,
   concurrency: 5,
   locale: "zh",
+  logEnabled: false,
+  logPath: "ai-auto-tagger.log",
 };

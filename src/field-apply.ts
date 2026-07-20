@@ -29,7 +29,9 @@ export function isEmptyValue(v: unknown, type: FieldMapping["type"]): boolean {
   if (v === undefined || v === null) return true;
   switch (type) {
     case "array":
-      return !Array.isArray(v) || v.length === 0;
+      if (!Array.isArray(v) || v.length === 0) return true;
+      // 空标签不能算是有标签：所有元素为空字符串/空白时也算空
+      return v.every((item) => String(item).trim() === "");
     case "string":
       return String(v).trim() === "";
     case "number":
@@ -52,9 +54,10 @@ export function applyFields(
   aiData: Record<string, unknown>,
   fields: FieldMapping[],
   policy: "skip" | "merge" | "overwrite"
-): { fm: Record<string, unknown>; changed: boolean } {
+): { fm: Record<string, unknown>; changed: boolean; writtenKeys: string[] } {
   const fm: Record<string, unknown> = { ...current };
   let changed = false;
+  const writtenKeys: string[] = [];
   const overwrite = policy === "overwrite";
   for (const field of fields) {
     if (!field.enabled || !field.name.trim()) continue;
@@ -66,10 +69,12 @@ export function applyFields(
     if (isEmptyValue(existing, field.type)) {
       fm[key] = coerced; // 实时补全空 / 被删除字段
       changed = true;
+      writtenKeys.push(key);
     } else if (overwrite) {
       if (JSON.stringify(existing) !== JSON.stringify(coerced)) {
         fm[key] = coerced;
         changed = true;
+        writtenKeys.push(key);
       }
     } else if (policy === "merge" && field.type === "array") {
       const ex = Array.isArray(existing) ? existing.map(String) : [];
@@ -79,9 +84,10 @@ export function applyFields(
       if (merged.length > ex.length) {
         fm[key] = merged;
         changed = true;
+        writtenKeys.push(key);
       }
     }
     // skip 且非空：保留已有值（保护用户已喜欢的标签）
   }
-  return { fm, changed };
+  return { fm, changed, writtenKeys };
 }

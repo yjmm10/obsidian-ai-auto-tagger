@@ -112,9 +112,11 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     apiKeyUrl: "https://open.bigmodel.cn/usercenter/apikeys",
     requiresKey: true,
     note:
-      "OpenAI 兼容。标准地址如上；coding 套餐请把 Base URL 改为 .../api/coding/paas/v4。",
+      "OpenAI 兼容。标准地址如上；coding 套餐请把 Base URL 改为 .../api/coding/paas/v4。" +
+      "注意：glm-5.x 等为推理模型，会消耗大量 token 用于思考链，请在设置中把「最大输出 token」调大到 ≥2000、「请求超时」调到 ≥60000。",
     noteEn:
-      "OpenAI-compatible. Standard URL above; for the coding plan change Base URL to .../api/coding/paas/v4.",
+      "OpenAI-compatible. Standard URL above; for the coding plan change Base URL to .../api/coding/paas/v4." +
+      " Note: glm-5.x are reasoning models that spend many tokens on the thinking chain; raise Max Output Tokens (>=2000) and Request Timeout (>=60000) in settings.",
   },
   qwen: {
     id: "qwen",
@@ -216,6 +218,7 @@ export const BUILTIN_MODELS: BuiltinModel[] = [
   { id: "glm-4-airx", label: "GLM-4-AirX", provider: "zhipu" },
   { id: "glm-4", label: "GLM-4", provider: "zhipu" },
   { id: "glm-3-turbo", label: "GLM-3-Turbo", provider: "zhipu" },
+  { id: "glm-5.2", label: "GLM-5.2 (推理模型)", provider: "zhipu", description: "推理模型：需调大「最大输出 token」(≥2000)与「请求超时」(≥60000)" },
 
   // 通义千问
   { id: "qwen-max", label: "Qwen-Max", provider: "qwen" },

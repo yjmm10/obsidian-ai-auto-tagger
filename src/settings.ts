@@ -9,9 +9,10 @@ import {
 } from "./models";
 import { verifyConnection } from "./ai-client";
 import { t, Locale } from "./i18n";
-import { QR_CODE_BASE64 } from "./assets";
+import { WECHAT_QR_URL } from "./assets";
 import { PLUGIN_LOGO_DATA_URI } from "./logo";
 import { TagSource } from "./types";
+import { Logger } from "./logger";
 
 type TabId = "tag" | "ai" | "about";
 
@@ -19,8 +20,8 @@ export class AITaggerSettingTab extends PluginSettingTab {
   plugin: AITaggerPlugin;
   /** 当前激活的标签页；用实例字段记住，避免 display() 重渲染时丢失。 */
   private activeTab: TabId = "tag";
-  /** 折叠的字段（按对象引用记录，避免索引漂移导致错乱） */
-  private collapsedFields = new Set<FieldMapping>();
+  /** 展开的字段（默认折叠；按对象引用记录，避免索引漂移导致错乱） */
+  private expandedFields = new Set<FieldMapping>();
 
   constructor(app: App, plugin: AITaggerPlugin) {
     super(app, plugin);
@@ -89,10 +90,12 @@ export class AITaggerSettingTab extends PluginSettingTab {
       this.buildAISection(content);
     } else if (this.activeTab === "about") {
       this.buildAboutSection(content);
+      this.buildDonationSection(content);
     } else {
       this.buildFieldSection(content);
       this.buildScopeSection(content);
       this.buildBehaviorSection(content);
+      this.buildLogSection(content);
       this.buildResetSection(content);
     }
   }
@@ -136,9 +139,28 @@ export class AITaggerSettingTab extends PluginSettingTab {
     return card;
   }
 
+  /** 渲染一个分区标题（非卡片），返回参数容器；其内部的具体参数以独立小卡片形式呈现。 */
+  private section(
+    parent: HTMLElement,
+    titleKey: string,
+    subKey?: string,
+    actions?: (container: HTMLElement) => void
+  ): HTMLElement {
+    const wrap = parent.createDiv({ cls: "ai-tagger-section" });
+    const head = wrap.createDiv({ cls: "ai-tagger-section-head" });
+    const text = head.createDiv({ cls: "ai-tagger-section-head-text" });
+    text.createEl("div", { cls: "ai-tagger-section-title", text: this.tr(titleKey) });
+    if (subKey) text.createEl("div", { cls: "ai-tagger-section-sub", text: this.tr(subKey) });
+    if (actions) {
+      const actionsEl = head.createDiv({ cls: "ai-tagger-section-actions" });
+      actions(actionsEl);
+    }
+    return wrap.createDiv({ cls: "ai-tagger-params" });
+  }
+
   // ============ AI 配置 ============
   private buildAISection(containerEl: HTMLElement): void {
-    const card = this.card(containerEl, "aiCardTitle", "aiCardSub");
+    const card = this.section(containerEl, "aiCardTitle", "aiCardSub");
     const ai = this.plugin.settings.ai;
     const info = PROVIDERS[ai.provider];
     const note = this.locale === "en" ? info.noteEn : info.note;
@@ -146,7 +168,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
     // 厂商选择
     new Setting(card)
       .setName(this.tr("providerName"))
-      .setDesc(this.tr("providerDesc"))
       .addDropdown((d) => {
         Object.values(PROVIDERS).forEach((p) => d.addOption(p.id, p.label));
         d.setValue(ai.provider).onChange(async (v) => {
@@ -217,7 +238,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
     const isCustom = !builtin.some((m) => m.id === ai.model);
     new Setting(card)
       .setName(this.tr("modelName"))
-      .setDesc(this.tr("modelDesc"))
       .addDropdown((d) => {
         builtin.forEach((m) =>
           d.addOption(m.id, m.label + (m.description ? `（${m.description}）` : ""))
@@ -240,7 +260,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
     if (isCustom) {
       new Setting(card)
         .setName(this.tr("customModelName"))
-        .setDesc(this.tr("customModelDesc"))
         .addText((t2) =>
           t2
             .setPlaceholder("glm-5.2")
@@ -328,7 +347,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
       ai.requestTimeout = d.requestTimeout;
       await this.plugin.saveSettings();
       this.display();
-      new Notice(this.tr("resetParamsNotice"));
     });
 
     new Setting(card)
@@ -354,7 +372,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
       ai.systemPrompt = DEFAULT_SETTINGS.ai.systemPrompt;
       await this.plugin.saveSettings();
       this.display();
-      new Notice(this.tr("sysPromptResetNotice"));
     });
 
     // 测试连接：整行 CTA
@@ -375,20 +392,37 @@ export class AITaggerSettingTab extends PluginSettingTab {
       const r = await verifyConnection(this.plugin.settings.ai);
       btn.removeAttribute("disabled");
       btn.textContent = this.tr("testConn");
+      // 连接测试结果也记入执行日志（若已开启）
+      const testLogger = new Logger(this.app, this.plugin.settings);
       if (r.ok) {
         status.textContent = this.tr("testOk");
         status.className = "ai-tagger-test-status is-ok";
+        const m = r.meta;
+        void testLogger.info(
+          m
+            ? `test connection: ok provider=${m.provider} model=${m.model} baseUrl=${m.baseUrl} durationMs=${m.durationMs}`
+            : "test connection: ok"
+        );
       } else {
         status.textContent = this.tr("testFail") + "\n" + r.error;
         status.className = "ai-tagger-test-status is-err";
-        new Notice(this.tr("testFailNotice"));
+        const m = r.meta;
+        const metaPart = m
+          ? ` provider=${m.provider} model=${m.model} baseUrl=${m.baseUrl} durationMs=${m.durationMs}`
+          : "";
+        void testLogger.error(
+          `test connection: fail - ${r.error ?? "unknown error"}${metaPart}`
+        );
+        new Notice(
+          this.tr("testFailNotice") + "\n" + (r.error ?? "unknown error")
+        );
       }
     });
   }
 
   // ============ 提取字段 ============
   private buildFieldSection(containerEl: HTMLElement): void {
-    const card = this.card(
+    const card = this.section(
       containerEl,
       "fieldCardTitle",
       "fieldCardSub",
@@ -454,7 +488,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
     }
 
     fields.forEach((field, idx) => {
-      const collapsed = this.collapsedFields.has(field);
+      const collapsed = !this.expandedFields.has(field);
       const card = listEl.createDiv({
         cls:
           "ai-tagger-field-card" +
@@ -464,8 +498,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
       // 卡片头：折叠箭头 + 字段元信息 + 启用开关 + 删除
       const head = card.createDiv({ cls: "ai-tagger-field-head" });
-      const preview = card.createDiv({ cls: "ai-tagger-field-preview" });
-      preview.textContent = field.description || this.tr("fNoDesc");
       const toggle = head.createEl("button", {
         cls: "ai-tagger-field-toggle",
         text: collapsed ? "▸" : "▾",
@@ -506,12 +538,12 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
       const setCollapsed = (val: boolean) => {
         if (val) {
-          this.collapsedFields.add(field);
+          this.expandedFields.delete(field);
           grid.style.display = "none";
           toggle.textContent = "▸";
           toggle.title = this.tr("expand");
         } else {
-          this.collapsedFields.delete(field);
+          this.expandedFields.add(field);
           grid.style.display = "";
           toggle.textContent = "▾";
           toggle.title = this.tr("collapse");
@@ -520,7 +552,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
       toggle.addEventListener("click", (e) => {
         e.stopPropagation();
-        setCollapsed(!this.collapsedFields.has(field));
+        setCollapsed(this.expandedFields.has(field));
       });
       head.addEventListener("click", (e) => {
         const target = e.target as HTMLElement;
@@ -529,7 +561,7 @@ export class AITaggerSettingTab extends PluginSettingTab {
           target === meta ||
           target.classList.contains("ai-tagger-field-name")
         ) {
-          setCollapsed(!this.collapsedFields.has(field));
+          setCollapsed(this.expandedFields.has(field));
         }
       });
       enableCheck.addEventListener("change", async () => {
@@ -540,14 +572,13 @@ export class AITaggerSettingTab extends PluginSettingTab {
       del.addEventListener("click", async (e) => {
         e.stopPropagation();
         fields.splice(idx, 1);
-        this.collapsedFields.delete(field);
+        this.expandedFields.delete(field);
         await this.plugin.saveSettings();
         this.renderFieldList(listEl);
       });
 
       new Setting(grid)
         .setName(this.tr("fNameName"))
-        .setDesc(this.tr("fNameDesc"))
         .addText((t2) =>
           t2
             .setPlaceholder("tags")
@@ -567,7 +598,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
       new Setting(grid)
         .setName(this.tr("fTypeName"))
-        .setDesc(this.tr("fTypeDesc"))
         .addDropdown((d) => {
           const types: FieldType[] = ["string", "array", "number", "boolean"];
           types.forEach((tp) => d.addOption(tp, tp));
@@ -583,7 +613,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
       new Setting(grid)
         .setName(this.tr("fModeName"))
-        .setDesc(this.tr("fModeDesc"))
         .addDropdown((d) => {
           d.addOption("generate", this.tr("fModeGenerate"));
           d.addOption("predefined", this.tr("fModePredefined"));
@@ -600,34 +629,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
       // 仅当模式为「使用预定标签 / 混合」时，显示该字段独立的预定义标签来源
       this.renderFieldPredefined(grid, field, listEl);
 
-      new Setting(grid)
-        .setName(this.tr("fDescName"))
-        .setDesc(this.tr("fDescDesc"))
-        .addTextArea((t2) =>
-          t2.setValue(field.description).onChange(async (v) => {
-            field.description = v;
-            preview.textContent = v || this.tr("fNoDesc");
-            await this.plugin.saveSettings();
-          })
-        )
-        .setClass("ai-tagger-span2")
-        .then((st) => {
-          (st.components[0] as any).inputEl.rows = 2;
-        });
-
-      new Setting(grid)
-        .setName(this.tr("fConstraintsName"))
-        .setDesc(this.tr("fConstraintsDesc"))
-        .addTextArea((t2) =>
-          t2.setValue(field.constraints).onChange(async (v) => {
-            field.constraints = v;
-            await this.plugin.saveSettings();
-          })
-        )
-        .setClass("ai-tagger-span2")
-        .then((st) => {
-          (st.components[0] as any).inputEl.rows = 2;
-        });
     });
   }
 
@@ -638,11 +639,18 @@ export class AITaggerSettingTab extends PluginSettingTab {
     listEl: HTMLElement
   ): void {
     if (field.mode === "generate") return;
+    // number / boolean 字段无标签池语义：不显示标签来源相关配置
+    if (field.type !== "array" && field.type !== "string") {
+      grid.createEl("p", {
+        cls: "ai-tagger-info-note ai-tagger-field-note",
+        text: this.tr("fPredefinedTypeNote"),
+      });
+      return;
+    }
     const src = field.tagSource ?? "both";
 
     new Setting(grid)
       .setName(this.tr("fTagSourceName"))
-      .setDesc(this.tr("fTagSourceDesc"))
       .addDropdown((d) => {
         d.addOption("file", this.tr("tagSourceFile"));
         d.addOption("vault", this.tr("tagSourceVault"));
@@ -652,29 +660,34 @@ export class AITaggerSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
           this.renderFieldList(listEl);
         });
-      })
-      .setClass("ai-tagger-span2");
+      });
 
     if (src !== "vault") {
       new Setting(grid)
         .setName(this.tr("fTagFilePathName"))
-        .setDesc(this.tr("fTagFilePathDesc"))
-        .addText((t2) =>
+        .addTextArea((t2) => {
           t2
             .setPlaceholder("tags.md")
             .setValue(field.tagFilePath ?? "tags.md")
             .onChange(async (v) => {
               field.tagFilePath = v.trim();
               await this.plugin.saveSettings();
-            })
-        )
+            });
+          // 两行文本框：完整显示长路径；输入时智能联想库内文件，点击 / 回车选定
+          t2.inputEl.classList.add("ai-tagger-path-area");
+          t2.inputEl.rows = 2;
+          this.attachPathSuggest(
+            t2.inputEl,
+            () => this.getVaultFilePaths(),
+            (p) => {
+              t2.setValue(p);
+              field.tagFilePath = p.trim();
+              void this.plugin.saveSettings();
+            }
+          );
+        })
         .setClass("ai-tagger-span2");
     }
-
-    grid.createEl("p", {
-      cls: "ai-tagger-info-note ai-tagger-field-note",
-      text: this.tr("fPredefinedHint"),
-    });
   }
 
   // ============ 生效范围 ============
@@ -684,14 +697,14 @@ export class AITaggerSettingTab extends PluginSettingTab {
     this.renderStringList(
       card,
       "enabledFoldersName",
-      "enabledFoldersDesc",
+      null,
       "enabledFoldersPh",
       this.plugin.settings.enabledFolders
     );
     this.renderStringList(
       card,
       "excludedFoldersName",
-      "excludedFoldersDesc",
+      null,
       "excludedFoldersPh",
       this.plugin.settings.excludedFolders
     );
@@ -699,7 +712,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
     const s = this.plugin.settings;
     new Setting(card)
       .setName(this.tr("recursiveName"))
-      .setDesc(this.tr("recursiveDesc"))
       .addToggle((t2) =>
         t2.setValue(s.recursiveScope).onChange(async (v) => {
           s.recursiveScope = v;
@@ -713,13 +725,12 @@ export class AITaggerSettingTab extends PluginSettingTab {
   private renderStringList(
     containerEl: HTMLElement,
     nameKey: string,
-    descKey: string,
+    descKey: string | null,
     phKey: string,
     arr: string[]
   ): void {
-    new Setting(containerEl)
-      .setName(this.tr(nameKey))
-      .setDesc(this.tr(descKey));
+    const setRow = new Setting(containerEl).setName(this.tr(nameKey));
+    if (descKey) setRow.setDesc(this.tr(descKey));
 
     const listEl = containerEl.createDiv({ cls: "ai-tagger-list" });
     const rerender = () => this.renderStringListItems(listEl, arr, rerender);
@@ -732,23 +743,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
       type: "text",
       placeholder: this.tr(phKey),
     });
-    const suggest = inputWrap.createEl("div", {
-      cls: "ai-tagger-suggest",
-    });
-    suggest.style.display = "none";
-
-    /** 当前展示的联想项（用于键盘导航） */
-    let suggestions: string[] = [];
-    let activeIdx = -1;
-
-    const setActive = (idx: number) => {
-      const items = Array.from(suggest.children) as HTMLElement[];
-      if (items.length === 0) return;
-      activeIdx = (idx + items.length) % items.length;
-      items.forEach((el, i) => el.toggleClass("is-active", i === activeIdx));
-      items[activeIdx]?.scrollIntoView({ block: "nearest" });
-    };
-
     const addPath = (path: string) => {
       const v = path.trim();
       if (v && !arr.includes(v)) {
@@ -756,84 +750,16 @@ export class AITaggerSettingTab extends PluginSettingTab {
         void this.plugin.saveSettings();
       }
       input.value = "";
-      suggestions = [];
-      activeIdx = -1;
-      suggest.style.display = "none";
-      suggest.empty();
       rerender();
       input.focus();
     };
 
-    const updateSuggest = () => {
-      const q = input.value.trim().toLowerCase();
-      if (!q) {
-        suggestions = [];
-        suggest.style.display = "none";
-        suggest.empty();
-        return;
-      }
-      const all = this.getVaultFolderPaths().filter(
-        (p) =>
-          p &&
-          !arr.includes(p) &&
-          (p.toLowerCase().includes(q) ||
-            p.toLowerCase().replace(/\//g, "").includes(q))
-      );
-      if (all.length === 0) {
-        suggestions = [];
-        suggest.style.display = "none";
-        suggest.empty();
-        return;
-      }
-      suggestions = all.slice(0, 15);
-      activeIdx = -1;
-      suggest.empty();
-      suggestions.forEach((path, i) => {
-        const item = suggest.createDiv({ cls: "ai-tagger-suggest-item" });
-        const span = item.createSpan({ text: path });
-        // 高亮命中的子串（含斜杠折叠匹配）
-        this.highlightMatch(span, path, input.value.trim());
-        item.addEventListener("click", () => addPath(path));
-        item.addEventListener("mouseenter", () => setActive(i));
-      });
-      suggest.style.display = "block";
-    };
-
-    input.addEventListener("input", updateSuggest);
-    input.addEventListener("focus", updateSuggest);
-    input.addEventListener("blur", () => {
-      // 延迟关闭，确保点击建议项先触发
-      window.setTimeout(() => {
-        suggest.style.display = "none";
-      }, 160);
-    });
-    input.addEventListener("keydown", (ev) => {
-      if (ev.key === "ArrowDown") {
-        if (suggest.style.display === "none") return;
-        ev.preventDefault();
-        setActive(activeIdx + 1);
-        return;
-      }
-      if (ev.key === "ArrowUp") {
-        if (suggest.style.display === "none") return;
-        ev.preventDefault();
-        setActive(activeIdx - 1);
-        return;
-      }
-      if (ev.key === "Enter") {
-        ev.preventDefault();
-        if (suggest.style.display !== "none" && suggestions.length > 0) {
-          addPath(suggestions[activeIdx >= 0 ? activeIdx : 0]);
-        } else {
-          const v = input.value.trim();
-          if (v) addPath(v);
-        }
-        return;
-      }
-      if (ev.key === "Escape") {
-        suggest.style.display = "none";
-      }
-    });
+    // 复用通用路径联想组件（候选排除已添加项），与标签文件路径输入保持一致的体验
+    this.attachPathSuggest(
+      input,
+      () => this.getVaultFolderPaths().filter((p) => !arr.includes(p)),
+      addPath
+    );
 
     const addBtn = row.createEl("button", { text: this.tr("addBtn") });
     addBtn.addEventListener("click", () => {
@@ -848,6 +774,122 @@ export class AITaggerSettingTab extends PluginSettingTab {
       .getAllFolders()
       .map((f) => f.path)
       .filter((p) => p && p.length > 0);
+  }
+
+  /** 读取知识库全部文件路径（用于标签文件等路径输入的智能联想候选） */
+  private getVaultFilePaths(): string[] {
+    return this.app.vault
+      .getFiles()
+      .map((f) => f.path)
+      .filter((p) => p && p.length > 0);
+  }
+
+  /**
+   * 为文本输入框附加「路径智能联想」下拉（文件夹 / 文件输入通用）：
+   * - 输入 / 聚焦时按候选列表过滤并展示候选（子串匹配，支持斜杠折叠匹配 03/01 ↔ 0301）
+   * - 点击或回车选定候选；↑/↓ 键盘导航；Esc 关闭
+   * - onPick(path) 在选中（或回车且无候选时取当前输入值）时回调，由调用方决定如何落值
+   * 候选通过 getCandidates() 动态获取（如库内文件夹 / 文件列表），每次输入重新求值，
+   * 因此调用方可在 getCandidates 中自行排除已选项。
+   */
+  private attachPathSuggest(
+    inputEl: HTMLInputElement | HTMLTextAreaElement,
+    getCandidates: () => string[],
+    onPick: (path: string) => void
+  ): void {
+    const host = inputEl.parentElement;
+    if (!host) return;
+    host.style.position = "relative";
+    const suggest = host.createDiv({ cls: "ai-tagger-suggest" });
+    suggest.style.display = "none";
+
+    let suggestions: string[] = [];
+    let activeIdx = -1;
+
+    const setActive = (idx: number) => {
+      const items = Array.from(suggest.children) as HTMLElement[];
+      if (items.length === 0) return;
+      activeIdx = (idx + items.length) % items.length;
+      items.forEach((el, i) => el.toggleClass("is-active", i === activeIdx));
+      items[activeIdx]?.scrollIntoView({ block: "nearest" });
+    };
+
+    const render = (paths: string[]) => {
+      suggestions = paths.slice(0, 15);
+      activeIdx = -1;
+      suggest.empty();
+      if (suggestions.length === 0) {
+        suggest.style.display = "none";
+        return;
+      }
+      suggestions.forEach((path, i) => {
+        const item = suggest.createDiv({ cls: "ai-tagger-suggest-item" });
+        const span = item.createSpan({ text: path });
+        // 高亮命中的子串（含斜杠折叠匹配）
+        this.highlightMatch(span, path, inputEl.value.trim());
+        item.addEventListener("click", () => {
+          onPick(path);
+          suggest.style.display = "none";
+        });
+        item.addEventListener("mouseenter", () => setActive(i));
+      });
+      suggest.style.display = "block";
+    };
+
+    const update = () => {
+      const raw = inputEl.value.trim();
+      const q = raw.toLowerCase();
+      if (!q) {
+        suggestions = [];
+        suggest.style.display = "none";
+        suggest.empty();
+        return;
+      }
+      const all = getCandidates().filter((p) => {
+        if (!p) return false;
+        const pl = p.toLowerCase();
+        return pl.includes(q) || pl.replace(/\//g, "").includes(q);
+      });
+      render(all);
+    };
+
+    inputEl.addEventListener("input", update);
+    inputEl.addEventListener("focus", update);
+    inputEl.addEventListener("blur", () => {
+      // 延迟关闭，确保点击建议项先触发
+      window.setTimeout(() => {
+        suggest.style.display = "none";
+      }, 160);
+    });
+    inputEl.addEventListener("keydown", (ev: KeyboardEvent) => {
+      if (ev.key === "ArrowDown") {
+        if (suggest.style.display === "none") return;
+        ev.preventDefault();
+        setActive(activeIdx + 1);
+        return;
+      }
+      if (ev.key === "ArrowUp") {
+        if (suggest.style.display === "none") return;
+        ev.preventDefault();
+        setActive(activeIdx - 1);
+        return;
+      }
+      if (ev.key === "Enter") {
+        // 始终拦截 Enter（避免 textarea 误插入换行）；有候选则选定候选，否则提交当前输入值
+        ev.preventDefault();
+        if (suggest.style.display !== "none" && suggestions.length > 0) {
+          onPick(suggestions[activeIdx >= 0 ? activeIdx : 0]);
+          suggest.style.display = "none";
+        } else {
+          const v = inputEl.value.trim();
+          if (v) onPick(v);
+        }
+        return;
+      }
+      if (ev.key === "Escape") {
+        suggest.style.display = "none";
+      }
+    });
   }
 
   /** 在容器内高亮与查询匹配的子串（含斜杠折叠） */
@@ -919,7 +961,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     new Setting(card)
       .setName(this.tr("autoCreateName"))
-      .setDesc(this.tr("autoCreateDesc"))
       .addToggle((t2) =>
         t2.setValue(s.autoOnCreate).onChange(async (v) => {
           s.autoOnCreate = v;
@@ -929,7 +970,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     new Setting(card)
       .setName(this.tr("autoModifyName"))
-      .setDesc(this.tr("autoModifyDesc"))
       .addToggle((t2) =>
         t2.setValue(s.autoOnModify).onChange(async (v) => {
           s.autoOnModify = v;
@@ -951,7 +991,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     new Setting(card)
       .setName(this.tr("debounceName"))
-      .setDesc(this.tr("debounceDesc"))
       .addText((t2) =>
         t2
           .setPlaceholder("3000")
@@ -965,7 +1004,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     new Setting(card)
       .setName(this.tr("tagPolicyName"))
-      .setDesc(this.tr("tagPolicyDesc"))
       .addDropdown((dd) =>
         dd
           .addOption("skip", this.tr("tagPolicySkip"))
@@ -980,7 +1018,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     new Setting(card)
       .setName(this.tr("maxContentName"))
-      .setDesc(this.tr("maxContentDesc"))
       .addText((t2) =>
         t2
           .setPlaceholder("1000")
@@ -994,7 +1031,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     new Setting(card)
       .setName(this.tr("minContentName"))
-      .setDesc(this.tr("minContentDesc"))
       .addText((t2) =>
         t2
           .setPlaceholder("300")
@@ -1008,7 +1044,6 @@ export class AITaggerSettingTab extends PluginSettingTab {
 
     new Setting(card)
       .setName(this.tr("concurrencyName"))
-      .setDesc(this.tr("concurrencyDesc"))
       .addText((t2) =>
         t2
           .setPlaceholder("5")
@@ -1021,9 +1056,38 @@ export class AITaggerSettingTab extends PluginSettingTab {
       );
   }
 
+  // ============ 执行日志 ============
+  private buildLogSection(containerEl: HTMLElement): void {
+    const card = this.card(containerEl, "logCardTitle", "logCardSub");
+    const s = this.plugin.settings;
+
+    new Setting(card)
+      .setName(this.tr("logEnabledName"))
+      .setDesc(this.tr("logEnabledDesc"))
+      .addToggle((t2) =>
+        t2.setValue(s.logEnabled).onChange(async (v) => {
+          s.logEnabled = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(card)
+      .setName(this.tr("logPathName"))
+      .setDesc(this.tr("logPathDesc"))
+      .addText((t2) =>
+        t2
+          .setPlaceholder("ai-auto-tagger.log")
+          .setValue(s.logPath)
+          .onChange(async (v) => {
+            s.logPath = v.trim() || "ai-auto-tagger.log";
+            await this.plugin.saveSettings();
+          })
+      );
+  }
+
   // ============ 恢复配置（两个恢复：字段 + 全部） ============
   private buildResetSection(containerEl: HTMLElement): void {
-    const card = this.card(containerEl, "resetCardTitle", "resetCardSub");
+    const card = this.section(containerEl, "resetCardTitle", "resetCardSub");
     const row = card.createDiv({ cls: "ai-tagger-reset-row" });
 
     // 1) 恢复默认字段
@@ -1035,9 +1099,9 @@ export class AITaggerSettingTab extends PluginSettingTab {
       this.plugin.settings.fields = DEFAULT_SETTINGS.fields.map((f) => ({
         ...f,
       }));
+      this.expandedFields.clear();
       await this.plugin.saveSettings();
       this.display();
-      new Notice(this.tr("restoreFieldsNotice"));
     });
 
     // 2) 恢复全部默认配置（二次确认防误清）
@@ -1063,9 +1127,9 @@ export class AITaggerSettingTab extends PluginSettingTab {
       if (timer) window.clearTimeout(timer);
       const fresh: PluginSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
       this.plugin.settings = fresh;
+      this.expandedFields.clear();
       await this.plugin.saveSettings();
       this.display();
-      new Notice(this.tr("restoreAllNotice"));
     });
   }
 
@@ -1107,21 +1171,37 @@ export class AITaggerSettingTab extends PluginSettingTab {
       cls: "ai-tagger-about-intro",
       text: this.tr("aboutThanks"),
     });
+  }
 
-    const support = info.createEl("p", {
-      cls: "ai-tagger-about-support",
-      text: this.tr("aboutSupport"),
+  // ============ 支持作者（捐赠） ============
+  // 固定展示三个渠道（与 manifest.json 的 fundingUrl 保持一致）：微信扫码、Buy Me a Coffee、爱发电。
+  private buildDonationSection(containerEl: HTMLElement): void {
+    const card = this.card(containerEl, "donationCardTitle", "donationCardSub");
+
+    const show = card.createDiv({ cls: "ai-tagger-donate-show" });
+
+    const wx = show.createEl("div", { cls: "ai-tagger-donate-item" });
+    const qr = wx.createEl("img", { cls: "ai-tagger-about-qr" });
+    qr.src = WECHAT_QR_URL;
+    qr.alt = this.tr("donationWechatCaption");
+    wx.createEl("span", {
+      cls: "ai-tagger-donate-caption",
+      text: this.tr("donationWechatCaption"),
     });
 
-    const qr = support.createEl("img", {
-      cls: "ai-tagger-about-qr",
-    });
-    qr.src = `data:image/png;base64,${QR_CODE_BASE64}`;
-    qr.alt = this.tr("aboutQrCaption");
-
-    info.createEl("p", {
-      cls: "ai-tagger-about-caption",
-      text: this.tr("aboutQrCaption"),
+    const btnWrap = show.createEl("div", { cls: "ai-tagger-donate-btns" });
+    const links: { labelKey: string; url: string }[] = [
+      { labelKey: "donationBmc", url: "https://buymeacoffee.com/yjmm10f" },
+      { labelKey: "donationAfdian", url: "https://ifdian.net/a/lusca" },
+    ];
+    links.forEach((p) => {
+      const a = btnWrap.createEl("a", {
+        text: this.tr(p.labelKey),
+        cls: "ai-tagger-donate-btn",
+        href: p.url,
+      });
+      a.setAttr("target", "_blank");
+      a.setAttr("rel", "noopener noreferrer");
     });
   }
 }

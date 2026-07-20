@@ -5,6 +5,7 @@ import { collectPredefinedTags, isInScope, tagFile } from "./tagger";
 import { isEmptyValue } from "./field-apply";
 import { splitFrontmatter } from "./frontmatter";
 import { isContentSufficient } from "./text";
+import { Logger } from "./logger";
 
 export default class AITaggerPlugin extends Plugin {
   settings: PluginSettings;
@@ -130,7 +131,7 @@ export default class AITaggerPlugin extends Plugin {
       (f) =>
         f.enabled &&
         f.name.trim().length > 0 &&
-        f.type === "array" &&
+        (f.type === "array" || f.type === "string") &&
         (f.mode === "predefined" || f.mode === "hybrid")
     );
     const sig = relevant
@@ -182,9 +183,9 @@ export default class AITaggerPlugin extends Plugin {
     mode: "auto" | "manual" | "batch",
     predefinedTags?: Record<string, string[]>
   ): Promise<boolean> {
+    const logger = new Logger(this.app, this.settings);
     if (!isInScope(file, this.settings)) {
-      if (mode === "manual")
-        new Notice(`AI Tagger: ${file.path} 不在生效范围内`);
+      void logger.warn(`skip ${file.path}: out of scope`);
       return false;
     }
 
@@ -196,16 +197,22 @@ export default class AITaggerPlugin extends Plugin {
     const sufficient = isContentSufficient(raw, this.settings.minContentChars);
 
     if (!sufficient && !needsFill) {
+      const bodyLen = splitFrontmatter(raw).body.trim().length;
       if (mode === "auto") {
         // 内容不足且无空字段：挂起，等后续 modify 写够再触发（不浪费 AI 调用）
         this.pendingCreate.add(file.path);
+        void logger.info(
+          `defer ${file.path}: awaiting more content (bodyChars=${bodyLen}, need≥${this.settings.minContentChars}, needsFill=false)`
+        );
       } else if (mode === "manual") {
-        const len = splitFrontmatter(raw).body.trim().length;
-        new Notice(
-          `AI Tagger: 内容过少（${len} 字），未达 ${this.settings.minContentChars} 字阈值，已跳过`
+        void logger.warn(
+          `skip ${file.path}: content too short (bodyChars=${bodyLen}/${this.settings.minContentChars}, mode=manual)`
+        );
+      } else {
+        void logger.info(
+          `skip ${file.path}: content too short (bodyChars=${bodyLen}/${this.settings.minContentChars}, mode=batch)`
         );
       }
-      // batch 模式静默跳过
       return false;
     }
 
@@ -217,7 +224,7 @@ export default class AITaggerPlugin extends Plugin {
         this.app,
         file,
         this.settings,
-        mode !== "auto",
+        true,
         pool,
         mode
       );
@@ -260,10 +267,15 @@ export default class AITaggerPlugin extends Plugin {
 
   private async runBatch(files: TFile[]): Promise<void> {
     if (files.length === 0) {
-      new Notice("AI Tagger: 没有符合条件的文件");
       return;
     }
-    new Notice(`AI Tagger: 开始批量处理 ${files.length} 个文件`);
+    const logger = new Logger(this.app, this.settings);
+    const maxList = 30;
+    const listed = files.slice(0, maxList).map((f) => f.path);
+    const more = files.length > maxList ? ` …+${files.length - maxList}` : "";
+    void logger.info(
+      `batch start: count=${files.length} files=[${listed.join(", ")}]${more}`
+    );
     let ok = 0;
     let fail = 0;
     const pool = await this.getPredefinedTags();
@@ -275,11 +287,12 @@ export default class AITaggerPlugin extends Plugin {
       } catch (e) {
         fail++;
         console.error("AI Tagger 批量处理失败:", file.path, e);
+        const msg = e instanceof Error ? e.message : String(e);
+        const stack = e instanceof Error && e.stack ? ` stack=${e.stack}` : "";
+        void logger.error(`batch fail ${file.path}: ${msg}${stack}`);
       }
     });
-    new Notice(
-      `AI Tagger: 批量完成（成功 ${ok} / 跳过或失败 ${fail}）`
-    );
+    void logger.info(`batch done: ok=${ok} skipOrFail=${fail}`);
   }
 
   /** 简易并发池 */

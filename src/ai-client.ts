@@ -6,10 +6,45 @@ import { z } from "zod";
 import { AISettings, FieldMapping, FieldMode } from "./types";
 import { PROVIDERS, SdkProvider } from "./models";
 
+export interface AICallMeta {
+  durationMs: number;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  timeoutMs: number;
+  maxTokens: number;
+  temperature: number;
+  topP: number;
+  enabledFields: string[];
+  title: string;
+  contentChars: number;
+}
+
 export interface AICallResult {
   ok: boolean;
   data?: Record<string, unknown>;
   error?: string;
+  meta?: AICallMeta;
+}
+
+function buildCallMeta(
+  settings: AISettings,
+  startedAt: number,
+  extras: { enabledFields: string[]; title: string; contentChars: number }
+): AICallMeta {
+  return {
+    durationMs: Date.now() - startedAt,
+    provider: settings.provider,
+    model: settings.model,
+    baseUrl: getBaseUrl(settings),
+    timeoutMs: settings.requestTimeout,
+    maxTokens: settings.maxTokens,
+    temperature: settings.temperature,
+    topP: settings.topP,
+    enabledFields: extras.enabledFields,
+    title: extras.title,
+    contentChars: extras.contentChars,
+  };
 }
 
 /** 校验 AI 基础配置是否完整，返回缺失项列表（空数组表示通过）。 */
@@ -80,15 +115,19 @@ function equiv(a: string, b: string): boolean {
  * - generate  : allowed = 手动 constraints（若有），union 空。
  * - predefined: 仅能选预定义池中的值；与手动 constraints 取交集；池空时回退到 constraints。
  * - hybrid    : AI 自由生成（allowed = 手动 constraints），union = 预定义池（始终并入）。
- * 预定义池只对数组（tags）类字段有意义；其它类型字段池为空，predefined/hybrid 退化为约束生成。
+ * 预定义池对所有「分类类」字段生效：array（多选，如 tags）与 string（单选，如 category / summary 等）。
+ * number / boolean 字段无标签池语义，池为空，predefined/hybrid 退化为自由生成（constraints 已不再于设置中暴露）。
  */
 function resolveFieldPolicy(
   field: FieldMapping,
   predefinedTags: string[]
 ): { allowed?: string[]; strict: boolean; union?: string[] } {
   const manual = normalizeList(field.constraints);
+  // 预定义池对 array（多选）与 string（单选）字段生效；number / boolean 无标签池语义。
   const pool =
-    field.type === "array" ? normalizeList(predefinedTags) : [];
+    field.type === "array" || field.type === "string"
+      ? normalizeList(predefinedTags)
+      : [];
   if (field.mode === "predefined") {
     let allowed = pool.length ? pool.slice() : manual.slice();
     if (manual.length) allowed = allowed.filter((v) => manual.some((m) => equiv(v, m)));
@@ -120,7 +159,7 @@ const DEFAULT_SYSTEM_PROMPT =
   "4. 不要输出任何解释、Markdown 代码块标记或多余文字，直接输出 JSON。";
 
 /** 把 AI 返回的数组值按 allowed 规范过滤；命中时映射回规范写法。
- *  strict=false 且全部越界时保留原值（避免误清空）。 */
+ *  全部越界时保留原值（即使是 predefined 严格模式也不清空，避免字段不生效）。 */
 function filterAllowed(
   arr: string[],
   allowed: string[] | undefined,
@@ -132,7 +171,7 @@ function filterAllowed(
     const hit = allowed.find((a) => equiv(a, v));
     if (hit) out.push(hit);
   }
-  if (out.length === 0 && !strict) return arr; // 全部越界：保留原值（手动约束的容错）
+  if (out.length === 0) return arr; // 全部越界：保留原值，避免清空
   return out;
 }
 
@@ -183,7 +222,9 @@ export function buildRequestParams(
         f.mode === "predefined"
           ? "（仅可从上述允许取值中选择，不得自创新值）"
           : f.mode === "hybrid"
-          ? "（生成后可并入预定义标签池）"
+          ? f.type === "array"
+            ? "（生成后会并入预定义标签池，池内全部标签都会被保留）"
+            : "（可参考下方预定义词表自由生成，不必拘泥于词表）"
           : "";
       return `- ${f.name}（类型：${f.type}）${cPart}：${f.description}${modeHint}`;
     })
@@ -249,10 +290,38 @@ export function coerceFields(
         else if (raw === "true" || raw === "false") out[key] = raw === "true";
         break;
       }
-      case "string":
+      case "string": {
+        let val: string;
+        if (Array.isArray(raw)) {
+          // 极少数情况下 AI 返回数组：按、连接为字符串
+          val = raw.map((v) => String(v).trim()).filter(Boolean).join("、");
+        } else {
+          val = String(raw).trim();
+        }
+        // predefined 模式（strict）：字符串字段也应限定在预定义池内（单选）。
+        // 命中则回写规范写法；未命中则尝试在按分隔符拆出的候选中取首个命中；
+        // 仍无命中则保留原值（安全降级，避免字段不生效）。
+        if (pol.allowed && pol.allowed.length && pol.strict) {
+          const hit = pol.allowed.find((a) => equiv(a, val));
+          if (hit) {
+            val = hit;
+          } else {
+            const cands = val
+              .split(/[，,、/|;；]/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const found = cands.find((c) =>
+              pol.allowed!.some((a) => equiv(a, c))
+            );
+            if (found) val = found;
+            // 无命中时保留原值，不清空
+          }
+        }
+        if (val) out[key] = val;
+        break;
+      }
       default: {
-        if (Array.isArray(raw)) out[key] = raw.map((v) => String(v)).join("、");
-        else out[key] = String(raw);
+        out[key] = String(raw);
         break;
       }
     }
@@ -260,15 +329,57 @@ export function coerceFields(
   return out;
 }
 
-/** 生成带超时的 AbortSignal，避免请求无限挂起。 */
-function timeoutSignal(ms: number): AbortSignal {
+type TimeoutHandle = {
+  signal: AbortSignal;
+  didTimeout: () => boolean;
+  clear: () => void;
+};
+
+/** 生成带超时的 AbortSignal，避免请求无限挂起；超时 reason 便于错误提示区分。 */
+function timeoutSignal(ms: number): TimeoutHandle {
   const ctrl = new AbortController();
-  setTimeout(() => ctrl.abort(), Math.max(1000, ms));
-  return ctrl.signal;
+  const realMs = Math.max(1000, ms);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort(new Error(`请求超时（${realMs} 毫秒）`));
+  }, realMs);
+  return {
+    signal: ctrl.signal,
+    didTimeout: () => timedOut,
+    clear: () => clearTimeout(timer),
+  };
+}
+
+/** 沿 message / cause / reason 收集错误文案，避免超时 reason 丢在嵌套里。 */
+function collectErrorText(e: unknown): string {
+  const parts: string[] = [];
+  let cur: unknown = e;
+  for (let depth = 0; cur && depth < 5; depth++) {
+    if (typeof cur === "string") {
+      parts.push(cur);
+      break;
+    }
+    const obj = cur as {
+      message?: unknown;
+      reason?: unknown;
+      cause?: unknown;
+    };
+    if (obj.message != null) parts.push(String(obj.message));
+    if (obj.reason != null) {
+      const r = obj.reason;
+      if (typeof r === "string") parts.push(r);
+      else if (r && typeof r === "object" && "message" in r) {
+        parts.push(String((r as { message?: unknown }).message));
+      }
+    }
+    cur = obj.cause;
+  }
+  return parts.filter(Boolean).join(" ") || String(e);
 }
 
 /** 把 Vercel AI SDK 抛出的错误转换为可读信息。 */
-function describeError(e: unknown): string {
+function describeError(e: unknown, timedOut = false): string {
   const err = e as {
     statusCode?: number;
     status?: number;
@@ -277,10 +388,15 @@ function describeError(e: unknown): string {
     name?: string;
   };
   const status = err?.statusCode ?? err?.status ?? err?.response?.status;
-  const msg = err?.message ?? String(e);
+  const msg = collectErrorText(e);
   if (status) return `HTTP ${status}: ${msg}`;
-  if (/(ECONN|fetch|network|abort|timeout)/i.test(msg))
-    return `连接/超时失败：${msg}`;
+  // 优先区分：超时 / 流中断(本插件无手动取消) / 手动取消 / 网络连接失败
+  if (timedOut || /timeout|请求超时/i.test(msg) || /BodyStreamBuffer was aborted/i.test(msg)) {
+    const timeoutHint = msg.match(/请求超时（\d+ 毫秒）/)?.[0] ?? msg;
+    return `请求超时：${timeoutHint}`;
+  }
+  if (/abort/i.test(msg)) return `请求已取消：${msg}`;
+  if (/(ECONN|fetch|network)/i.test(msg)) return `连接失败：${msg}`;
   return msg;
 }
 
@@ -297,11 +413,28 @@ export async function callAI(
   modelOverride?: any,
   predefinedTags: Record<string, string[]> = {}
 ): Promise<AICallResult> {
-  const cfgErr = validateSettings(settings);
-  if (cfgErr.length) return { ok: false, error: "配置无效：" + cfgErr.join("；") };
-
+  const startedAt = Date.now();
   const enabled = fields.filter((f) => f.enabled && f.name.trim().length > 0);
-  if (enabled.length === 0) return { ok: false, error: "未启用任何字段" };
+  const enabledNames = enabled.map((f) => f.name.trim());
+  const metaBase = () =>
+    buildCallMeta(settings, startedAt, {
+      enabledFields: enabledNames,
+      title,
+      contentChars: content.length,
+    });
+
+  const cfgErr = validateSettings(settings);
+  if (cfgErr.length) {
+    return {
+      ok: false,
+      error: "配置无效：" + cfgErr.join("；"),
+      meta: metaBase(),
+    };
+  }
+
+  if (enabled.length === 0) {
+    return { ok: false, error: "未启用任何字段", meta: metaBase() };
+  }
 
   const { system, prompt, schema } = buildRequestParams(
     settings,
@@ -312,6 +445,7 @@ export async function callAI(
   );
 
   const model = buildModel(settings, modelOverride);
+  const t = timeoutSignal(settings.requestTimeout);
   try {
     const { object } = await generateObject({
       model,
@@ -322,14 +456,21 @@ export async function callAI(
       topP: settings.topP,
       maxOutputTokens: settings.maxTokens,
       maxRetries: 0,
-      abortSignal: timeoutSignal(settings.requestTimeout),
+      abortSignal: t.signal,
     });
+    t.clear();
     return {
       ok: true,
       data: coerceFields(object as Record<string, unknown>, enabled, predefinedTags),
+      meta: metaBase(),
     };
   } catch (e) {
-    return { ok: false, error: describeError(e) };
+    t.clear();
+    return {
+      ok: false,
+      error: describeError(e, t.didTimeout()),
+      meta: metaBase(),
+    };
   }
 }
 
@@ -341,10 +482,25 @@ export async function verifyConnection(
   settings: AISettings,
   modelOverride?: any
 ): Promise<AICallResult> {
+  const startedAt = Date.now();
+  const metaBase = () =>
+    buildCallMeta(settings, startedAt, {
+      enabledFields: [],
+      title: "ping",
+      contentChars: 0,
+    });
+
   const cfgErr = validateSettings(settings);
-  if (cfgErr.length) return { ok: false, error: "配置无效：" + cfgErr.join("；") };
+  if (cfgErr.length) {
+    return {
+      ok: false,
+      error: "配置无效：" + cfgErr.join("；"),
+      meta: metaBase(),
+    };
+  }
 
   const model = buildModel(settings, modelOverride);
+  const t = timeoutSignal(settings.requestTimeout);
   try {
     const result = await generateText({
       model,
@@ -354,10 +510,11 @@ export async function verifyConnection(
       temperature: 0,
       topP: settings.topP,
       maxRetries: 0,
-      abortSignal: timeoutSignal(settings.requestTimeout),
+      abortSignal: t.signal,
     });
+    t.clear();
     const text = result.text ?? "";
-    if (text.trim().length > 0) return { ok: true };
+    if (text.trim().length > 0) return { ok: true, meta: metaBase() };
     const raw = result.response?.body
       ? JSON.stringify(result.response.body).slice(0, 800)
       : "(SDK 未提供原始响应)";
@@ -368,13 +525,20 @@ export async function verifyConnection(
       return {
         ok: false,
         error: `模型因 token 不足被截断（finish_reason=length）。原始响应片段：${raw}`,
+        meta: metaBase(),
       };
     }
     return {
       ok: false,
       error: `模型返回为空。原始响应片段：${raw}`,
+      meta: metaBase(),
     };
   } catch (e) {
-    return { ok: false, error: describeError(e) };
+    t.clear();
+    return {
+      ok: false,
+      error: describeError(e, t.didTimeout()),
+      meta: metaBase(),
+    };
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "ai-auto-tagger",
-  "version": "1.6.0",
+  "version": "1.7.2",
   "description": "用兼容 OpenAI 协议的 AI 接口为 Obsidian 笔记自动生成标签与自定义字段",
   "main": "main.js",
   "scripts": {
@@ -8,6 +8,7 @@
     "watch": "node watch.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "test": "tsx test/verify.ts",
+    "issue-fix": "node scripts/issue-fix.mjs",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
   "keywords": [

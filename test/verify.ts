@@ -301,11 +301,14 @@ const JSON_CONTENT = JSON.stringify({
       (pOut.tags as string[]).includes("运动") &&
       !(pOut.tags as string[]).includes("美食")
   );
-  // 全部越界时（predefined 严格）不写入该字段（避免写入空 tags）
+  // 全部越界时（predefined 严格）安全降级：保留 AI 原值，避免字段不生效
   const pOut2 = coerceFields({ tags: ["美食", "旅行"] }, pFields, { tags: POOL });
   check(
-    "predefined 全部越界时不写入字段",
-    !("tags" in pOut2)
+    "predefined 全部越界时保留原值(安全降级)",
+    Array.isArray(pOut2.tags) &&
+      (pOut2.tags as string[]).length === 2 &&
+      (pOut2.tags as string[]).includes("美食") &&
+      (pOut2.tags as string[]).includes("旅行")
   );
   // hybrid：AI 自由生成 ∪ 预定义池（并集去重，含池内全部标签）
   const hFields: FieldMapping[] = [
@@ -355,6 +358,34 @@ const JSON_CONTENT = JSON.stringify({
       !(twoOut.mood as string[]).includes("读书")
   );
 
+  // ---------- 9. 字符串字段也支持预定义池（不限于数组）----------
+  console.log("\n[9] 字符串字段的预定义 / 混合模式");
+  const sPool = ["技术", "读书", "生活"];
+  // predefined 字符串字段：命中池内值 → 回写规范写法
+  const sFields: FieldMapping[] = [
+    { enabled: true, name: "category", type: "string", description: "分类", constraints: "", mode: "predefined" },
+  ];
+  const sOut = coerceFields({ category: "技术" }, sFields, { category: sPool });
+  check("字符串 predefined 命中池内值(回写规范写法)", sOut.category === "技术");
+  // predefined 字符串字段：越界值 → 安全降级保留原值
+  const sOut2 = coerceFields({ category: "美食" }, sFields, { category: sPool });
+  check("字符串 predefined 越界值保留原值(安全降级)", sOut2.category === "美食");
+  // predefined 字符串字段：部分包含(如「读书笔记」含「读书」)不算命中 → 保留原值
+  const sOut3 = coerceFields({ category: "读书笔记" }, sFields, { category: sPool });
+  check("字符串 predefined 部分包含不命中保留原值(安全降级)", sOut3.category === "读书笔记");
+  // 提示词注入预定义池（字符串字段同样）
+  const rpS = buildRequestParams(cfg, sFields, "t", "c", { category: sPool });
+  check("字符串 predefined 也在提示词注入预定义池", rpS.system.includes("技术, 读书, 生活"));
+  // 字符串 predefined 但池为空(无标签来源) → 退化为普通生成，不丢值
+  const sOutEmpty = coerceFields({ category: "我的分类" }, sFields, {});
+  check("字符串 predefined 池为空时保留原值(退化为生成)", sOutEmpty.category === "我的分类");
+  // 混合字符串字段：自由生成，不强制，不并集
+  const hS: FieldMapping[] = [
+    { enabled: true, name: "category", type: "string", description: "分类", constraints: "", mode: "hybrid" },
+  ];
+  const hSOut = coerceFields({ category: "自定义分类" }, hS, { category: sPool });
+  check("字符串 hybrid 自由生成(保留自定义值)", hSOut.category === "自定义分类");
+
   // ---------- 12. 实时补全：空字段 / 被删除字段始终写入（applyFields） ----------
   console.log("\n[12] 实时补全（applyFields 字段级策略）");
   const rtFields: FieldMapping[] = [
@@ -398,6 +429,18 @@ const JSON_CONTENT = JSON.stringify({
   check("isEmptyValue: 空数组为空(string 类型看处理)", isEmptyValue([], "array") === true);
   check("isEmptyValue: false 布尔非空", isEmptyValue(false, "boolean") === false);
   check("isEmptyValue: 空字符串为空", isEmptyValue("  ", "string") === true);
+  // 空标签不算已有标签：[""]、["  "] 等全空元素数组视为空
+  check("isEmptyValue: [\"\"] 空字符串元素数组为空", isEmptyValue([""], "array") === true);
+  check("isEmptyValue: [\"  \"] 空白元素数组为空", isEmptyValue(["  "], "array") === true);
+  check("isEmptyValue: [\"\", \"  \"] 多个空元素数组为空", isEmptyValue(["", "  "], "array") === true);
+  check("isEmptyValue: [\"a\"] 有实内容则非空", isEmptyValue(["a"], "array") === false);
+  check("isEmptyValue: [\"\", \"a\"] 含实内容则非空", isEmptyValue(["", "a"], "array") === false);
+
+  // 空标签数组在 skip 策略下也应实时补全
+  const skipEmptyStr = applyFields({ tags: [""] }, { tags: ["技术"] }, rtFields, "skip");
+  check("skip 策略：[\"\"] 空标签数组实时补全", Array.isArray(skipEmptyStr.fm.tags) && (skipEmptyStr.fm.tags as string[]).includes("技术"));
+  const skipEmptyWs = applyFields({ tags: ["  ", ""] }, { tags: ["读书"] }, rtFields, "skip");
+  check("skip 策略：[\"  \",\"\"] 全空标签数组实时补全", Array.isArray(skipEmptyWs.fm.tags) && (skipEmptyWs.fm.tags as string[]).includes("读书"));
 
   console.log(`\n结果：通过 ${passed}，失败 ${failed}`);
   if (failed > 0) process.exit(1);

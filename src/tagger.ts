@@ -3,6 +3,7 @@ import { FieldMapping, PluginSettings, TagSource } from "./types";
 import { callAI } from "./ai-client";
 import { compileNote, splitFrontmatter } from "./frontmatter";
 import { applyFields } from "./field-apply";
+import { jsonForLog, Logger, truncate } from "./logger";
 
 /**
  * 收集「预定义标签池」（按字段独立配置来源）：
@@ -110,9 +111,34 @@ function isGenericTitle(t: string): boolean {
   );
 }
 
+function poolSizes(predefinedTags: Record<string, string[]>): string {
+  const keys = Object.keys(predefinedTags);
+  if (keys.length === 0) return "{}";
+  return jsonForLog(
+    Object.fromEntries(keys.map((k) => [k, predefinedTags[k]?.length ?? 0])),
+    500
+  );
+}
+
+function formatMeta(meta: NonNullable<Awaited<ReturnType<typeof callAI>>["meta"]>): string {
+  return [
+    `provider=${meta.provider}`,
+    `model=${meta.model}`,
+    `baseUrl=${meta.baseUrl}`,
+    `timeoutMs=${meta.timeoutMs}`,
+    `maxTokens=${meta.maxTokens}`,
+    `temperature=${meta.temperature}`,
+    `topP=${meta.topP}`,
+    `durationMs=${meta.durationMs}`,
+    `enabledFields=[${meta.enabledFields.join(",")}]`,
+    `title=${JSON.stringify(meta.title)}`,
+    `contentChars=${meta.contentChars}`,
+  ].join(" ");
+}
+
 /**
  * 对单个文件执行 AI 标记并写回 frontmatter。
- * @param notice 是否弹出 Notice 提示（批量时通常设为 false）
+ * @param notice 是否弹出 Notice 提示
  * @returns 是否成功写入
  */
 export async function tagFile(
@@ -123,8 +149,9 @@ export async function tagFile(
   predefinedTags: Record<string, string[]> = {},
   mode: "auto" | "manual" | "batch" = "manual"
 ): Promise<boolean> {
+  const logger = new Logger(app, settings);
   if (!isInScope(file, settings)) {
-    if (notice) new Notice(`AI Tagger: ${file.path} 不在生效范围内，已跳过`);
+    void logger.warn(`skip ${file.path}: out of scope (mode=${mode})`);
     return false;
   }
 
@@ -136,10 +163,18 @@ export async function tagFile(
   const title = file.basename.trim();
   // 无可用信号（正文空且标题为空 / 泛化）时不发起 AI 调用，避免对空文件浪费
   if (content.trim().length === 0 && (title.length === 0 || isGenericTitle(title))) {
-    if (notice && mode !== "auto")
-      new Notice(`AI Tagger: ${file.path} 缺乏可读内容，已跳过`);
+    void logger.warn(
+      `skip ${file.path}: no readable content (mode=${mode}, title=${JSON.stringify(title)}, bodyChars=${body.trim().length})`
+    );
     return false;
   }
+
+  const enabledNames = settings.fields
+    .filter((f: FieldMapping) => f.enabled && f.name.trim())
+    .map((f) => f.name.trim());
+  void logger.info(
+    `start ${file.path} (mode=${mode}, title=${JSON.stringify(title)}, contentChars=${content.length}, contentPreview=${JSON.stringify(truncate(content, 200))}, enabledFields=[${enabledNames.join(",")}], tagPolicy=${settings.tagPolicy}, poolSizes=${poolSizes(predefinedTags)})`
+  );
 
   const res = await callAI(
     settings.ai,
@@ -152,27 +187,39 @@ export async function tagFile(
   if (!res.ok || !res.data) {
     if (notice)
       new Notice(`AI Tagger: 调用失败 - ${res.error ?? "未知错误"}`);
+    const metaPart = res.meta ? ` ${formatMeta(res.meta)}` : "";
+    void logger.error(
+      `fail ${file.path}: ${res.error ?? "unknown error"}${metaPart}`
+    );
     return false;
   }
 
+  void logger.info(
+    `ai-ok ${file.path}: ${formatMeta(res.meta!)} data=${jsonForLog(res.data)}`
+  );
+
   // 字段级策略：空字段 / 被删除字段始终实时补全，非空字段按 tagPolicy 处理
-  const { fm: newFm, changed } = applyFields(
+  const { fm: newFm, changed, writtenKeys } = applyFields(
     fm,
     res.data,
     settings.fields,
     settings.tagPolicy
   );
   if (!changed) {
-    if (notice && mode !== "auto")
-      new Notice(`AI Tagger: ${file.path} 无新增字段`);
+    const related: Record<string, unknown> = {};
+    for (const k of enabledNames) related[k] = fm[k];
+    void logger.info(
+      `skip ${file.path}: no new fields written (policy=${settings.tagPolicy}, aiData=${jsonForLog(res.data)}, existingFm=${jsonForLog(related, 1000)})`
+    );
     return false;
   }
 
   const out = compileNote(newFm, body);
   await app.vault.modify(file, out);
-  if (notice) {
-    const label = mode === "auto" ? "🏷️ 已自动更新" : "✅ 已写入";
-    new Notice(`AI Tagger: ${label} ${file.path}`);
-  }
+  const writtenSnapshot: Record<string, unknown> = {};
+  for (const k of writtenKeys) writtenSnapshot[k] = newFm[k];
+  void logger.info(
+    `updated ${file.path}: writtenKeys=[${writtenKeys.join(", ")}] values=${jsonForLog(writtenSnapshot)}`
+  );
   return true;
 }

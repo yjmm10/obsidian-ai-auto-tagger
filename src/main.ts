@@ -270,6 +270,7 @@ export default class AITaggerPlugin extends Plugin {
       return;
     }
     const logger = new Logger(this.app, this.settings);
+    new Notice(`AI Tagger: 开始批量处理 ${files.length} 个文件`);
     const maxList = 30;
     const listed = files.slice(0, maxList).map((f) => f.path);
     const more = files.length > maxList ? ` …+${files.length - maxList}` : "";
